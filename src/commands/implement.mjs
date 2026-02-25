@@ -32,9 +32,9 @@ function readReport(reportPath) {
   return text
 }
 
-export async function runImplement(args = []) {
+export async function runImplement(args = [], cwd = process.cwd()) {
   const overrides = parseImplementArgs(args)
-  const config = await loadConfig()
+  const config = await loadConfig(cwd)
   assertCommandAvailable(config.implement.codex.bin)
 
   const reportMarkdown = readReport(config.paths.reportPath)

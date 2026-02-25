@@ -20,8 +20,8 @@ function ensureFilesExist(groups) {
   }
 }
 
-export async function runShots() {
-  const config = await loadConfig()
+export async function runShots(cwd = process.cwd()) {
+  const config = await loadConfig(cwd)
 
   assertFullFlowCoverage(config)
 

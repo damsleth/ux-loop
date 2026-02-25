@@ -32,9 +32,9 @@ function toAbsolute(rootDir, filePath) {
   return path.isAbsolute(filePath) ? filePath : path.resolve(rootDir, filePath)
 }
 
-export async function runReview(args = []) {
+export async function runReview(args = [], cwd = process.cwd()) {
   const overrides = parseReviewArgs(args)
-  const config = await loadConfig()
+  const config = await loadConfig(cwd)
   const manifest = readManifest(config.paths.manifestPath)
 
   const runner = (overrides.runner || config.review.runner || "codex").toLowerCase()

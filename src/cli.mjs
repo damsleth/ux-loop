@@ -5,6 +5,7 @@ import { runInit } from "./commands/init.mjs"
 import { runPipeline } from "./commands/run.mjs"
 import { runReview } from "./commands/review.mjs"
 import { runShots } from "./commands/shots.mjs"
+import { resolveWorkspaceCwd } from "./utils/workspace-cwd.mjs"
 
 function printHelp() {
   console.log(`uxl - UX loop CLI
@@ -21,6 +22,7 @@ Usage:
 
 async function main() {
   const [, , command, ...args] = process.argv
+  const workspaceCwd = resolveWorkspaceCwd()
 
   try {
     if (!command || command === "--help" || command === "-h") {
@@ -29,7 +31,7 @@ async function main() {
     }
 
     if (command === "init") {
-      const result = await runInit(args)
+      const result = await runInit(args, workspaceCwd)
       console.log(`Created: ${result.configPath}`)
       if (result.warnings.length > 0) {
         for (const warning of result.warnings) {
@@ -40,27 +42,27 @@ async function main() {
     }
 
     if (command === "flows") {
-      await runFlows(args)
+      await runFlows(args, workspaceCwd)
       return
     }
 
     if (command === "shots") {
-      await runShots()
+      await runShots(workspaceCwd)
       return
     }
 
     if (command === "review") {
-      await runReview(args)
+      await runReview(args, workspaceCwd)
       return
     }
 
     if (command === "implement") {
-      await runImplement(args)
+      await runImplement(args, workspaceCwd)
       return
     }
 
     if (command === "run") {
-      await runPipeline(args)
+      await runPipeline(args, workspaceCwd)
       return
     }
 
