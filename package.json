@@ -1,0 +1,32 @@
+{
+  "name": "@damsleth/ux-loop",
+  "version": "1.0.0",
+  "private": false,
+  "type": "module",
+  "description": "Drop-in agentic UX pipeline (shots -> review -> implement) for npm projects.",
+  "license": "WTFPL",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "restricted"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "bin": {
+    "uxl": "src/cli.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "release:check": "npm test && npm pack --dry-run"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40.0"
+  }
+}
