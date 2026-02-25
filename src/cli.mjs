@@ -29,7 +29,6 @@ async function main() {
     if (command === "init") {
       const result = await runInit(args)
       console.log(`Created: ${result.configPath}`)
-      console.log(`Created: ${result.adapterPath}`)
       return
     }
 

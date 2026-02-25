@@ -38,8 +38,12 @@ export async function runReview(args = []) {
   const manifest = readManifest(config.paths.manifestPath)
 
   const runner = (overrides.runner || config.review.runner || "codex").toLowerCase()
-  const model = overrides.model || config.review.model || (runner === "openai" ? "gpt-5" : "")
+  const model = overrides.model || config.review.model
   const prompt = config.review.systemPrompt || DEFAULT_REVIEW_PROMPT
+
+  if (runner === "openai" && !model) {
+    throw new Error("review.model is required when using the OpenAI runner. Set it in config or pass --model.")
+  }
 
   if (runner === "codex") {
     assertCodexReady(config.review.codex.bin)

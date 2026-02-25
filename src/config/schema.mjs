@@ -94,7 +94,7 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
     }
   }
 
-  if (merged.capture.runner === "playwright" && merged.capture.playwright && !isObject(merged.capture.playwright)) {
+  if (merged.capture.runner === "playwright" && merged.capture.playwright !== undefined && !isObject(merged.capture.playwright)) {
     throw new Error(`capture.playwright must be an object in ${configFilePath}.`)
   }
 
@@ -112,7 +112,6 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
   if (merged.capture.adapter) {
     merged.capture.adapter = resolvePath(root, merged.capture.adapter)
   }
-  merged.implement.autoCommit = false
 
   return merged
 }

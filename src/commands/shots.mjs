@@ -1,5 +1,4 @@
 import fs from "fs"
-import { spawn } from "child_process"
 import { loadConfig } from "../config/load-config.mjs"
 import { writeManifest } from "../manifest/write-manifest.mjs"
 import { createPlaywrightCaptureHarness } from "../capture/playwright-harness.mjs"
@@ -53,7 +52,6 @@ export async function runShots() {
     shotsDir: config.paths.shotsDir,
     baseUrl: config.capture.baseUrl,
     logger: console,
-    spawn,
     env: { ...process.env, ...(config.capture.env || {}) },
     timeoutMs: config.capture.timeoutMs,
   })

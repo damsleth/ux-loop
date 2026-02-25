@@ -6,15 +6,16 @@ import { runShots } from "./shots.mjs"
 export async function runPipeline(args = []) {
   const config = await loadConfig()
 
-  if (config.run.runShots) {
-    await runShots()
+  const runStep = async (label, fn) => {
+    try {
+      await fn()
+    } catch (err) {
+      if (config.run.stopOnError) throw err
+      console.error(`[uxl:${label}] ${err instanceof Error ? err.message : err}`)
+    }
   }
 
-  if (config.run.runReview) {
-    await runReview(args)
-  }
-
-  if (config.run.runImplement) {
-    await runImplement(args)
-  }
+  if (config.run.runShots) await runStep("shots", () => runShots())
+  if (config.run.runReview) await runStep("review", () => runReview(args))
+  if (config.run.runImplement) await runStep("implement", () => runImplement(args))
 }

@@ -25,7 +25,6 @@ export async function runInit(args = [], cwd = process.cwd()) {
   }
 
   const configPath = path.join(cwd, "uxl.config.mjs")
-  const adapterPath = path.join(cwd, "uxl.capture.mjs")
 
   const configContent = `import { defineUxlConfig } from "@damsleth/ux-loop"
 
@@ -61,32 +60,9 @@ export default defineUxlConfig({
 })
 `
 
-  const adapterContent = `import { createPlaywrightCaptureHarness } from "@damsleth/ux-loop"
-
-export const captureUx = createPlaywrightCaptureHarness({
-  startCommand: "dev",
-  devices: [
-    { name: "mobile", width: 390, height: 844 },
-    { name: "desktop", width: 1280, height: 800 },
-  ],
-  flows: [
-    {
-      label: "Home — Mobile vs Desktop",
-      name: "home",
-      path: "/",
-      waitFor: "main",
-      settleMs: 250,
-      screenshot: { fullPage: true },
-    },
-  ]
-})
-`
-
   writeFileGuarded(configPath, configContent, force)
-  writeFileGuarded(adapterPath, adapterContent, force)
 
   return {
     configPath,
-    adapterPath,
   }
 }

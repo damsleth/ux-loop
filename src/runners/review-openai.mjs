@@ -1,15 +1,8 @@
 import fs from "fs"
 
 async function loadOpenAiClientClass() {
-  try {
-    const module = await import("openai")
-    return module.default
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    throw new Error(
-      `OpenAI runner selected but the \"openai\" package is not installed. Install it with \`npm i -D openai\`. (${message})`
-    )
-  }
+  const module = await import("openai")
+  return module.default
 }
 
 async function resolveOpenAiClientClass(openAiLoader) {
@@ -17,11 +10,8 @@ async function resolveOpenAiClientClass(openAiLoader) {
     return await (openAiLoader || loadOpenAiClientClass)()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    if (message.includes("OpenAI runner selected but the \"openai\" package is not installed")) {
-      throw error
-    }
     throw new Error(
-      `OpenAI runner selected but the \"openai\" package is not installed. Install it with \`npm i -D openai\`. (${message})`
+      `OpenAI runner selected but the "openai" package is not installed. Install it with \`npm i openai\`. (${message})`
     )
   }
 }
