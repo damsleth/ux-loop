@@ -7,6 +7,15 @@ import {
   evaluateFlowCoverage,
 } from "../capture/flow-onboarding.mjs"
 
+const DEFAULT_PACKAGE_SCRIPTS = {
+  "uxl:init": "uxl init",
+  "uxl:flows": "uxl flows check",
+  "uxl:shots": "uxl shots",
+  "uxl:review": "uxl review",
+  "uxl:implement": "uxl implement",
+  "uxl:run": "uxl run",
+}
+
 function parseInitArgs(args) {
   const flags = new Set(args)
   const presetArg = args.find((arg) => arg.startsWith("--preset="))
@@ -24,6 +33,58 @@ function writeFileGuarded(filePath, content, force) {
     throw new Error(`File already exists: ${filePath}. Use --force to overwrite.`)
   }
   fs.writeFileSync(filePath, content, "utf8")
+}
+
+function readJsonFile(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"))
+  } catch (error) {
+    throw new Error(
+      `Could not parse JSON file at ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+}
+
+function ensurePackageScripts(cwd) {
+  const packageJsonPath = path.join(cwd, "package.json")
+
+  let packageJson
+  let packageJsonCreated = false
+  if (fs.existsSync(packageJsonPath)) {
+    packageJson = readJsonFile(packageJsonPath)
+  } else {
+    packageJson = {
+      name: path.basename(cwd),
+      private: true,
+    }
+    packageJsonCreated = true
+  }
+
+  if (!packageJson || typeof packageJson !== "object" || Array.isArray(packageJson)) {
+    throw new Error(`package.json at ${packageJsonPath} must contain a JSON object.`)
+  }
+
+  if (!packageJson.scripts || typeof packageJson.scripts !== "object" || Array.isArray(packageJson.scripts)) {
+    packageJson.scripts = {}
+  }
+
+  const scriptsAdded = []
+  for (const [scriptName, scriptCommand] of Object.entries(DEFAULT_PACKAGE_SCRIPTS)) {
+    if (packageJson.scripts[scriptName] === undefined) {
+      packageJson.scripts[scriptName] = scriptCommand
+      scriptsAdded.push(scriptName)
+    }
+  }
+
+  if (packageJsonCreated || scriptsAdded.length > 0) {
+    fs.writeFileSync(`${packageJsonPath}`, `${JSON.stringify(packageJson, null, 2)}\n`, "utf8")
+  }
+
+  return {
+    packageJsonPath,
+    packageJsonCreated,
+    scriptsAdded,
+  }
 }
 
 function serializeConfig(config) {
@@ -160,12 +221,17 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
     }
 
     writeFileGuarded(configPath, serializeConfig(configObject), force)
+    const packageScripts = ensurePackageScripts(cwd)
+    if (packageScripts.scriptsAdded.length > 0) {
+      logger.log(`Added package scripts: ${packageScripts.scriptsAdded.join(", ")}`)
+    }
 
     return {
       configPath,
       onboardingStatus,
       playwrightInstalled,
       warnings,
+      packageScripts,
     }
   } finally {
     if (promptRuntime) {

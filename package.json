@@ -1,6 +1,6 @@
 {
   "name": "@damsleth/ux-loop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": false,
   "type": "module",
   "description": "Drop-in agentic UX pipeline (shots -> review -> implement) for npm projects.",

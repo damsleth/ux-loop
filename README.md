@@ -48,6 +48,7 @@ uxl flows check
 ```
 
 Then complete mappings with `uxl flows add` and `uxl flows map` until coverage is 100%.
+`uxl init` also scaffolds `uxl:*` scripts into `package.json` (without overwriting existing script entries).
 
 `uxl` resolves the project workspace from the original invocation directory (for example `INIT_CWD` under `npm exec`) so config is written to your project root, not package install directories.
 
