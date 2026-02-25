@@ -1,4 +1,5 @@
 import fs from "fs"
+import { assertFullFlowCoverage } from "../capture/flow-onboarding.mjs"
 import { loadConfig } from "../config/load-config.mjs"
 import { writeManifest } from "../manifest/write-manifest.mjs"
 import { createPlaywrightCaptureHarness } from "../capture/playwright-harness.mjs"
@@ -21,6 +22,9 @@ function ensureFilesExist(groups) {
 
 export async function runShots() {
   const config = await loadConfig()
+
+  assertFullFlowCoverage(config)
+
   fs.mkdirSync(config.paths.artifactsDir, { recursive: true })
   fs.mkdirSync(config.paths.shotsDir, { recursive: true })
   fs.mkdirSync(config.paths.logsDir, { recursive: true })

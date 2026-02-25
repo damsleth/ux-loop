@@ -10,6 +10,9 @@ test("normalizeConfig applies defaults and resolves paths", () => {
   })
 
   assert.equal(config.capture.runner, "playwright")
+  assert.equal(config.capture.onboarding.status, "pending")
+  assert.deepEqual(config.capture.flowInventory, [])
+  assert.deepEqual(config.capture.flowMapping, {})
   assert.equal(config.implement.autoCommit, false)
   assert.equal(config.paths.shotsDir, path.resolve("/tmp/example-project", ".uxl/shots"))
   assert.equal(config.paths.reportPath, path.resolve("/tmp/example-project", ".uxl/report.md"))
@@ -36,4 +39,48 @@ test("normalizeConfig resolves capture adapter path when provided", () => {
   })
 
   assert.equal(config.capture.adapter, path.resolve("/tmp/workspace", "./uxl.capture.mjs"))
+})
+
+test("normalizeConfig rejects unknown mapped flow names", () => {
+  assert.throws(
+    () =>
+      normalizeConfig({
+        capture: {
+          flowInventory: [{ id: "home", label: "Home", required: true }],
+          flowMapping: { home: ["missing-flow"] },
+          playwright: {
+            flows: [{ name: "home-flow", label: "Home", path: "/" }],
+          },
+        },
+      }),
+    /unknown capture\.playwright flow name/
+  )
+})
+
+test("normalizeConfig rejects complete onboarding when coverage is not full", () => {
+  assert.throws(
+    () =>
+      normalizeConfig({
+        capture: {
+          onboarding: { status: "complete" },
+          flowInventory: [{ id: "home", label: "Home", required: true }],
+          flowMapping: {},
+          playwright: { flows: [{ name: "home", label: "Home", path: "/" }] },
+        },
+      }),
+    /cannot be "complete"/
+  )
+})
+
+test("normalizeConfig accepts complete onboarding when coverage is 100%", () => {
+  const config = normalizeConfig({
+    capture: {
+      onboarding: { status: "complete" },
+      flowInventory: [{ id: "home", label: "Home", required: true }],
+      flowMapping: { home: ["home"] },
+      playwright: { flows: [{ name: "home", label: "Home", path: "/" }] },
+    },
+  })
+
+  assert.equal(config.capture.onboarding.status, "complete")
 })

@@ -7,6 +7,12 @@ Generic CLI-first UX pipeline for npm projects:
 - `implement` (apply changes with Codex)
 - `run` (all three in sequence)
 
+## Strict flow mapping (default)
+
+`uxl shots` is gated until required flow inventory coverage is 100%.
+
+Coverage means every `capture.flowInventory` entry with `required: true` must map to one or more valid `capture.playwright.flows[].name` values in `capture.flowMapping`.
+
 ## Install
 
 ```bash
@@ -24,6 +30,8 @@ npm i openai
 ```json
 {
   "scripts": {
+    "uxl:init": "uxl init",
+    "uxl:flows": "uxl flows check",
     "uxl:shots": "uxl shots",
     "uxl:review": "uxl review",
     "uxl:implement": "uxl implement",
@@ -32,7 +40,16 @@ npm i openai
 }
 ```
 
-## Minimal config (no adapter file required)
+## First run
+
+```bash
+uxl init
+uxl flows check
+```
+
+Then complete mappings with `uxl flows add` and `uxl flows map` until coverage is 100%.
+
+## Config shape
 
 Create `uxl.config.mjs`:
 
@@ -44,6 +61,17 @@ export default defineUxlConfig({
     runner: "playwright",
     baseUrl: process.env.UI_REVIEW_BASE_URL || "http://127.0.0.1:5173",
     timeoutMs: 120000,
+    onboarding: {
+      status: "pending",
+    },
+    flowInventory: [
+      { id: "home", label: "Homepage", path: "/", required: true },
+      { id: "pricing", label: "Pricing page", path: "/pricing", required: true },
+    ],
+    flowMapping: {
+      home: ["home"],
+      pricing: ["pricing"],
+    },
     playwright: {
       startCommand: "dev",
       devices: [
@@ -52,9 +80,17 @@ export default defineUxlConfig({
       ],
       flows: [
         {
-          label: "Home — Mobile vs Desktop",
+          label: "Homepage",
           name: "home",
           path: "/",
+          waitFor: "main",
+          settleMs: 250,
+          screenshot: { fullPage: true },
+        },
+        {
+          label: "Pricing",
+          name: "pricing",
+          path: "/pricing",
           waitFor: "main",
           settleMs: 250,
           screenshot: { fullPage: true },
@@ -71,12 +107,15 @@ export default defineUxlConfig({
 })
 ```
 
-## Capture differentiators
+## Flows command group
 
-The harness keeps mechanics generic and stable. Per-project variation lives in:
+- `uxl flows list`
+- `uxl flows add --id <id> --label <label> [--path <path>] [--to <flowName>]`
+- `uxl flows map --id <inventoryId> --to <flowName[,flowName]>`
+- `uxl flows check`
+- `uxl flows import-playwright [--yes]`
 
-- **Flows**: navigation + interactions + screenshot targets.
-- **Devices**: viewport or Playwright device presets.
+`import-playwright` only adds suggestions and leaves onboarding pending.
 
 ## Flow action types
 
@@ -110,7 +149,8 @@ export async function captureUx(context) {
 
 ## Command summary
 
-- `uxl init`
+- `uxl init [--preset=playwright-vite] [--force] [--non-interactive]`
+- `uxl flows <list|add|map|check|import-playwright>`
 - `uxl shots`
 - `uxl review`
 - `uxl implement`

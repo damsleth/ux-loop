@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { runFlows } from "./commands/flows.mjs"
 import { runImplement } from "./commands/implement.mjs"
 import { runInit } from "./commands/init.mjs"
 import { runPipeline } from "./commands/run.mjs"
@@ -9,7 +10,8 @@ function printHelp() {
   console.log(`uxl - UX loop CLI
 
 Usage:
-  uxl init [--preset=playwright-vite] [--force]
+  uxl init [--preset=playwright-vite] [--force] [--non-interactive]
+  uxl flows <list|add|map|check|import-playwright> [...flags]
   uxl shots
   uxl review [--runner codex|openai] [--model <name>]
   uxl implement [--target current|branch|worktree] [--branch <name>] [--worktree <path>] [--model <name>]
@@ -29,6 +31,16 @@ async function main() {
     if (command === "init") {
       const result = await runInit(args)
       console.log(`Created: ${result.configPath}`)
+      if (result.warnings.length > 0) {
+        for (const warning of result.warnings) {
+          console.log(`Warning: ${warning}`)
+        }
+      }
+      return
+    }
+
+    if (command === "flows") {
+      await runFlows(args)
       return
     }
 
