@@ -147,6 +147,8 @@ function toAbsoluteUrl(baseUrl, maybeRelative) {
   return new URL(maybeRelative, baseUrl).toString()
 }
 
+// Handles stateful action types that share cross-action runtime state.
+// Falls through to applyAction for the basic (stateless) action types.
 async function applyStatefulAction(page, action, runtime, baseUrl) {
   const type = action?.type
 

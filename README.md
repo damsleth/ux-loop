@@ -16,7 +16,7 @@ npm i -D @damsleth/ux-loop
 Optional (only if using `uxl review --runner openai`):
 
 ```bash
-npm i -D openai
+npm i openai
 ```
 
 ## Scripts

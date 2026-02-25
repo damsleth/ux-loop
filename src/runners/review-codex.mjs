@@ -7,7 +7,7 @@ export function assertCodexReady(codexBin) {
   runCommand(codexBin, ["--version"])
 }
 
-export function reviewWithCodex({ codexBin, model, prompt, label, filePaths }) {
+export async function reviewWithCodex({ codexBin, model, prompt, label, filePaths }) {
   for (const filePath of filePaths) {
     if (!fs.existsSync(filePath)) {
       throw new Error(`Missing screenshot: ${filePath}`)

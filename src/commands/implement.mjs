@@ -5,7 +5,7 @@ import { buildDefaultImplementPrompt } from "../prompts/default-implement-prompt
 import { runCodexImplement } from "../runners/implement-codex.mjs"
 import { assertCommandAvailable } from "../utils/process.mjs"
 
-function parseImplementArgs(args) {
+export function parseImplementArgs(args) {
   const values = {}
   for (let i = 0; i < args.length; i += 1) {
     const token = args[i]

@@ -5,7 +5,7 @@ import { DEFAULT_REVIEW_PROMPT } from "../prompts/default-review-prompt.mjs"
 import { assertCodexReady, reviewWithCodex } from "../runners/review-codex.mjs"
 import { reviewWithOpenAi } from "../runners/review-openai.mjs"
 
-function parseReviewArgs(args) {
+export function parseReviewArgs(args) {
   const values = {}
   for (let i = 0; i < args.length; i += 1) {
     const token = args[i]
@@ -61,7 +61,7 @@ export async function runReview(args = []) {
     const filePaths = group.files.map((entry) => toAbsolute(config.paths.root, entry))
     const critique =
       runner === "codex"
-        ? reviewWithCodex({
+        ? await reviewWithCodex({
             codexBin: config.review.codex.bin,
             model,
             prompt,
