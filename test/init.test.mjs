@@ -131,3 +131,57 @@ test("runInit preserves existing scripts while adding missing uxl scripts", asyn
   assert.equal(packageJson.scripts["uxl:run"], "uxl run")
   assert.equal(packageJson.scripts["uxl:init"], "uxl init")
 })
+
+test("runInit reads existing playwright config for baseURL and webServer command", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-init-playwright-config-"))
+  installUxlStub(cwd)
+
+  fs.writeFileSync(
+    path.join(cwd, "playwright.config.ts"),
+    [
+      "import { defineConfig } from '@playwright/test'",
+      "",
+      "export default defineConfig({",
+      "  use: {",
+      "    baseURL: 'http://127.0.0.1:3000',",
+      "  },",
+      "  webServer: {",
+      "    command: 'pnpm dev --port 3000',",
+      "  },",
+      "})",
+      "",
+    ].join("\n"),
+    "utf8"
+  )
+
+  const scaffold = {
+    source: "route-scan",
+    files: [],
+    inventory: [{ id: "home", label: "Home", path: "/", required: true }],
+    flows: [{ name: "home", label: "Home", path: "/", screenshot: { fullPage: true } }],
+    flowMapping: { home: ["home"] },
+  }
+
+  const previousUiReviewBaseUrl = process.env.UI_REVIEW_BASE_URL
+  delete process.env.UI_REVIEW_BASE_URL
+  try {
+    await runInit(["--non-interactive"], cwd, {
+      detectPlaywrightInstalled: () => true,
+      buildFlowScaffold: () => scaffold,
+      logger: { log: () => {} },
+    })
+
+    const { raw } = await loadRawConfig(cwd)
+    assert.equal(raw.capture.baseUrl, "http://127.0.0.1:3000")
+    assert.deepEqual(raw.capture.playwright.startCommand, {
+      command: "pnpm",
+      args: ["dev", "--port", "3000"],
+    })
+  } finally {
+    if (previousUiReviewBaseUrl === undefined) {
+      delete process.env.UI_REVIEW_BASE_URL
+    } else {
+      process.env.UI_REVIEW_BASE_URL = previousUiReviewBaseUrl
+    }
+  }
+})

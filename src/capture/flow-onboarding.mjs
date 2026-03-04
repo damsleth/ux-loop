@@ -13,6 +13,15 @@ const ROUTE_FILE_EXTENSIONS = new Set([
   ".cts",
 ])
 
+const PLAYWRIGHT_CONFIG_FILENAMES = [
+  "playwright.config.ts",
+  "playwright.config.js",
+  "playwright.config.mjs",
+  "playwright.config.cjs",
+  "playwright.config.mts",
+  "playwright.config.cts",
+]
+
 const IGNORED_DIRS = new Set([
   ".git",
   ".uxl",
@@ -142,6 +151,45 @@ export function detectPlaywrightInstalled(cwd = process.cwd()) {
     return true
   } catch {
     return false
+  }
+}
+
+export function findPlaywrightConfigPath(cwd = process.cwd()) {
+  for (const filename of PLAYWRIGHT_CONFIG_FILENAMES) {
+    const candidate = path.join(cwd, filename)
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate
+    }
+  }
+  return null
+}
+
+function extractQuotedValue(text, regex) {
+  const match = text.match(regex)
+  if (!match) return null
+  return match[2] || null
+}
+
+export function readPlaywrightConfigSnapshot(cwd = process.cwd()) {
+  const configPath = findPlaywrightConfigPath(cwd)
+  if (!configPath) {
+    return null
+  }
+
+  let sourceText
+  try {
+    sourceText = fs.readFileSync(configPath, "utf8")
+  } catch {
+    return { configPath }
+  }
+
+  const baseUrl = extractQuotedValue(sourceText, /\bbaseURL\b\s*:\s*(["'`])([^"'`]+)\1/)
+  const webServerCommand = extractQuotedValue(sourceText, /\bwebServer\b[\s\S]*?\bcommand\b\s*:\s*(["'`])([^"'`]+)\1/)
+
+  return {
+    configPath,
+    baseUrl: baseUrl || undefined,
+    webServerCommand: webServerCommand || undefined,
   }
 }
 

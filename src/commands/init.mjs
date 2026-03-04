@@ -5,6 +5,7 @@ import {
   buildFlowScaffold,
   detectPlaywrightInstalled,
   evaluateFlowCoverage,
+  readPlaywrightConfigSnapshot,
 } from "../capture/flow-onboarding.mjs"
 
 const DEFAULT_PACKAGE_SCRIPTS = {
@@ -87,7 +88,7 @@ function ensurePackageScripts(cwd) {
   }
 }
 
-function serializeConfig(config) {
+function serializeConfig(config, baseUrlFallback = "http://127.0.0.1:5173") {
   const token = "__UXL_BASE_URL_TOKEN__"
   const withToken = {
     ...config,
@@ -99,7 +100,7 @@ function serializeConfig(config) {
 
   const json = JSON.stringify(withToken, null, 2).replace(
     `"${token}"`,
-    'process.env.UI_REVIEW_BASE_URL || "http://127.0.0.1:5173"'
+    `process.env.UI_REVIEW_BASE_URL || ${JSON.stringify(baseUrlFallback)}`
   )
 
   return `import { defineUxlConfig } from "@damsleth/ux-loop"
@@ -114,6 +115,18 @@ function createDefaultPrompt() {
     ask: async (message) => rl.question(message),
     close: async () => rl.close(),
   }
+}
+
+function splitCommand(commandText) {
+  const parts = String(commandText || "")
+    .trim()
+    .match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g)
+
+  if (!parts || parts.length === 0) return null
+
+  const normalized = parts.map((part) => part.replace(/^["']|["']$/g, ""))
+  const [command, ...args] = normalized
+  return { command, args }
 }
 
 export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
@@ -162,6 +175,18 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
     }
 
     const scaffold = (runtime.buildFlowScaffold || buildFlowScaffold)(cwd)
+    const playwrightConfig = (runtime.readPlaywrightConfigSnapshot || readPlaywrightConfigSnapshot)(cwd)
+    const configuredBaseUrl = playwrightConfig?.baseUrl || "http://127.0.0.1:5173"
+
+    let configuredStartCommand = "dev"
+    if (playwrightConfig?.webServerCommand) {
+      const parsed = splitCommand(playwrightConfig.webServerCommand)
+      configuredStartCommand = parsed || configuredStartCommand
+    }
+
+    if (playwrightConfig?.configPath) {
+      logger.log(`Detected Playwright config: ${playwrightConfig.configPath}`)
+    }
 
     let onboardingStatus = "pending"
     if (isInteractive) {
@@ -196,7 +221,7 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
         flowInventory: scaffold.inventory,
         flowMapping: scaffold.flowMapping,
         playwright: {
-          startCommand: "dev",
+          startCommand: configuredStartCommand,
           devices: [
             { name: "mobile", width: 390, height: 844 },
             { name: "desktop", width: 1280, height: 800 },
@@ -220,7 +245,7 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
       warnings.push("Flow onboarding is pending. Complete mapping with `uxl flows check` and `uxl flows map`.")
     }
 
-    writeFileGuarded(configPath, serializeConfig(configObject), force)
+    writeFileGuarded(configPath, serializeConfig(configObject, configuredBaseUrl), force)
     const packageScripts = ensurePackageScripts(cwd)
     if (packageScripts.scriptsAdded.length > 0) {
       logger.log(`Added package scripts: ${packageScripts.scriptsAdded.join(", ")}`)
