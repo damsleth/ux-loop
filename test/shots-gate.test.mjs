@@ -96,5 +96,9 @@ test("runShots proceeds when flow coverage is complete", async () => {
 
     const manifestPath = path.join(cwd, ".uxl", "shots", "manifest.json")
     assert.equal(fs.existsSync(manifestPath), true)
+
+    const logsDir = path.join(cwd, ".uxl", "logs")
+    const logFiles = fs.readdirSync(logsDir).filter((entry) => entry.startsWith("shots-") && entry.endsWith(".log"))
+    assert.ok(logFiles.length > 0, "expected shots log file in .uxl/logs")
   })
 })

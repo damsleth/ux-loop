@@ -25,12 +25,14 @@ function extractText(response) {
   return response?.choices?.[0]?.message?.content?.trim() || ""
 }
 
-export async function reviewWithOpenAi({ apiKey, model, prompt, label, filePaths, openAiLoader }) {
+export async function reviewWithOpenAi({ apiKey, model, prompt, label, filePaths, openAiLoader, logger = console }) {
   for (const filePath of filePaths) {
     if (!fs.existsSync(filePath)) {
       throw new Error(`Missing screenshot: ${filePath}`)
     }
   }
+
+  logger?.log?.(`OpenAI review input for "${label}": ${filePaths.length} image(s)`)
 
   const OpenAI = await resolveOpenAiClientClass(openAiLoader)
   const client = new OpenAI({ apiKey })
@@ -42,6 +44,7 @@ export async function reviewWithOpenAi({ apiKey, model, prompt, label, filePaths
     })
   }
 
+  const startedAt = Date.now()
   const response = await client.chat.completions.create({
     model,
     messages: [
@@ -49,10 +52,12 @@ export async function reviewWithOpenAi({ apiKey, model, prompt, label, filePaths
       { role: "user", content },
     ],
   })
+  logger?.log?.(`OpenAI completed for "${label}" in ${Date.now() - startedAt}ms`)
 
   const text = extractText(response)
   if (!text) {
     throw new Error(`OpenAI response for \"${label}\" did not contain text output.`)
   }
+  logger?.log?.(`OpenAI output for "${label}":\n${text}`)
   return text
 }

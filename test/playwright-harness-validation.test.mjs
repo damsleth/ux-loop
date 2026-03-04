@@ -4,6 +4,7 @@ import assert from "node:assert/strict"
 import {
   buildServerProbeUrls,
   createPlaywrightCaptureHarness,
+  isServerReadyResponse,
   validatePlaywrightCaptureDefinition,
 } from "../src/capture/playwright-harness.mjs"
 
@@ -87,4 +88,15 @@ test("buildServerProbeUrls includes loopback aliases for 127.0.0.1", () => {
 test("buildServerProbeUrls leaves non-loopback hosts unchanged", () => {
   const urls = buildServerProbeUrls("https://example.com/app")
   assert.deepEqual(urls, ["https://example.com/app"])
+})
+
+test("isServerReadyResponse accepts non-5xx responses", () => {
+  assert.equal(isServerReadyResponse({ status: 200 }), true)
+  assert.equal(isServerReadyResponse({ status: 302 }), true)
+  assert.equal(isServerReadyResponse({ status: 404 }), true)
+})
+
+test("isServerReadyResponse rejects 5xx responses", () => {
+  assert.equal(isServerReadyResponse({ status: 500 }), false)
+  assert.equal(isServerReadyResponse({ status: 503 }), false)
 })

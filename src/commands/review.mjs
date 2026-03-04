@@ -4,6 +4,7 @@ import { loadConfig } from "../config/load-config.mjs"
 import { DEFAULT_REVIEW_PROMPT } from "../prompts/default-review-prompt.mjs"
 import { assertCodexReady, reviewWithCodex } from "../runners/review-codex.mjs"
 import { reviewWithOpenAi } from "../runners/review-openai.mjs"
+import { createCommandLogger } from "../utils/command-logger.mjs"
 
 export function parseReviewArgs(args) {
   const values = {}
@@ -32,10 +33,53 @@ function toAbsolute(rootDir, filePath) {
   return path.isAbsolute(filePath) ? filePath : path.resolve(rootDir, filePath)
 }
 
+const SPINNER_FRAMES = ["|", "/", "-", "\\"]
+
+function startProgressAnimation(label) {
+  if (!process.stdout?.isTTY) {
+    return {
+      stop() {},
+    }
+  }
+
+  let frame = 0
+  const render = () => {
+    const symbol = SPINNER_FRAMES[frame % SPINNER_FRAMES.length]
+    process.stdout.write(`\r[uxl:review] ${label} ${symbol}`)
+    frame += 1
+  }
+
+  render()
+  const timer = setInterval(render, 100)
+
+  return {
+    stop(message) {
+      clearInterval(timer)
+      process.stdout.write(`\r[uxl:review] ${message}\n`)
+    },
+  }
+}
+
+function countIssuesInCritique(text) {
+  const normalized = String(text || "").trim()
+  if (!normalized) return 0
+  if (/no issues found\.?/i.test(normalized)) return 0
+
+  const bulletLines = normalized
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^[-*]\s+/.test(line) || /^\d+\.\s+/.test(line))
+    .filter((line) => !/no issues found\.?/i.test(line))
+
+  if (bulletLines.length > 0) return bulletLines.length
+  return 1
+}
+
 export async function runReview(args = [], cwd = process.cwd()) {
   const overrides = parseReviewArgs(args)
   const config = await loadConfig(cwd)
   const manifest = readManifest(config.paths.manifestPath)
+  const logger = createCommandLogger({ scope: "review", logsDir: config.paths.logsDir })
 
   const runner = (overrides.runner || config.review.runner || "codex").toLowerCase()
   const model = overrides.model || config.review.model
@@ -49,6 +93,14 @@ export async function runReview(args = [], cwd = process.cwd()) {
     assertCodexReady(config.review.codex.bin)
   }
 
+  logger.log(`Starting review in ${config.paths.root}`)
+  logger.log(`Manifest: ${config.paths.manifestPath}`)
+  logger.log(`Report output: ${config.paths.reportPath}`)
+  logger.log(`Runner: ${runner}`)
+  logger.log(`Model: ${model || "default"}`)
+  logger.log(`Screenshot groups: ${manifest.groups.length}`)
+  logger.log(`System prompt:\n${prompt}`)
+
   const report = []
   report.push("# UX Review Report")
   report.push("")
@@ -56,33 +108,53 @@ export async function runReview(args = [], cwd = process.cwd()) {
   report.push(runner === "codex" ? `Runner: codex CLI (${config.review.codex.bin})` : "Runner: OpenAI API")
   report.push(`Model: ${model || "default"}`)
   report.push("")
+  let totalIssues = 0
 
-  for (const group of manifest.groups) {
+  for (let index = 0; index < manifest.groups.length; index += 1) {
+    const group = manifest.groups[index]
     const filePaths = group.files.map((entry) => toAbsolute(config.paths.root, entry))
-    const critique =
-      runner === "codex"
-        ? await reviewWithCodex({
-            codexBin: config.review.codex.bin,
-            model,
-            prompt,
-            label: group.label,
-            filePaths,
-          })
-        : await reviewWithOpenAi({
-            apiKey: process.env[config.review.openai.apiKeyEnv],
-            model,
-            prompt,
-            label: group.label,
-            filePaths,
-          })
+    logger.log(`Processing group ${index + 1}/${manifest.groups.length}: ${group.label}`)
+    logger.log(`Images (${filePaths.length}): ${filePaths.join(", ")}`)
+    const startedAt = Date.now()
+    const progress = startProgressAnimation(`Reviewing group ${index + 1}/${manifest.groups.length}: ${group.label}`)
+
+    let critique
+    try {
+      critique =
+        runner === "codex"
+          ? await reviewWithCodex({
+              codexBin: config.review.codex.bin,
+              model,
+              prompt,
+              label: group.label,
+              filePaths,
+              logger,
+            })
+          : await reviewWithOpenAi({
+              apiKey: process.env[config.review.openai.apiKeyEnv],
+              model,
+              prompt,
+              label: group.label,
+              filePaths,
+              logger,
+            })
+      progress.stop(`Reviewed group ${index + 1}/${manifest.groups.length}: ${group.label} (${Date.now() - startedAt}ms)`)
+    } catch (error) {
+      progress.stop(`Review failed for group ${index + 1}/${manifest.groups.length}: ${group.label}`)
+      throw error
+    }
 
     report.push(`## ${group.label}`)
     report.push("")
     report.push(critique)
     report.push("")
+    totalIssues += countIssuesInCritique(critique)
+    logger.log(`Completed group ${index + 1}/${manifest.groups.length}: ${group.label}`)
   }
 
   fs.mkdirSync(path.dirname(config.paths.reportPath), { recursive: true })
   fs.writeFileSync(config.paths.reportPath, `${report.join("\n")}\n`, "utf8")
-  console.log(`Report written: ${config.paths.reportPath}`)
+  logger.log(`Finished review for ${manifest.groups.length} groups`)
+  logger.log(`Summary: ${totalIssues} issue${totalIssues === 1 ? "" : "s"} found`)
+  logger.log(`Report written: ${config.paths.reportPath}`)
 }

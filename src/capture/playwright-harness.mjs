@@ -26,6 +26,65 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function isServerReadyResponse(response) {
+  return Boolean(response) && Number.isFinite(response.status) && response.status < 500
+}
+
+function waitForProcessExit(proc, timeoutMs = 3000) {
+  if (!proc) return Promise.resolve(true)
+  if (proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve(true)
+
+  return new Promise((resolve) => {
+    const onExit = () => {
+      cleanup()
+      resolve(true)
+    }
+    const cleanup = () => {
+      clearTimeout(timer)
+      proc.off("exit", onExit)
+    }
+    const timer = setTimeout(() => {
+      cleanup()
+      resolve(false)
+    }, timeoutMs)
+
+    proc.on("exit", onExit)
+  })
+}
+
+async function stopServerProcess(proc, logger) {
+  if (!proc) return
+  if (proc.exitCode !== null || proc.signalCode !== null) return
+
+  logger?.log?.("Stopping capture server")
+
+  try {
+    proc.kill("SIGINT")
+  } catch {
+    return
+  }
+
+  if (await waitForProcessExit(proc, 3000)) return
+
+  logger?.warn?.("Capture server did not stop on SIGINT, sending SIGTERM")
+  try {
+    proc.kill("SIGTERM")
+  } catch {
+    return
+  }
+
+  if (await waitForProcessExit(proc, 2000)) return
+
+  logger?.warn?.("Capture server did not stop on SIGTERM, sending SIGKILL")
+  try {
+    proc.kill("SIGKILL")
+  } catch {
+    return
+  }
+
+  await waitForProcessExit(proc, 1000)
+}
+
 function buildServerProbeUrls(baseUrl) {
   let parsed
   try {
@@ -64,7 +123,7 @@ async function waitForServer(url, timeoutMs = 120000) {
     for (const probeUrl of probeUrls) {
       try {
         const response = await fetch(probeUrl, { method: "GET" })
-        if (response.ok) return probeUrl
+        if (isServerReadyResponse(response)) return probeUrl
       } catch {
         // retry
       }
@@ -94,11 +153,11 @@ function normalizeStartCommand(startCommand) {
 async function ensureServer({ baseUrl, timeoutMs, startCommand, env, cwd, logger }) {
   if (!baseUrl) return { proc: null, baseUrl }
 
-  const alreadyReadyUrl = await waitForServer(baseUrl, 2000)
+  const alreadyReadyUrl = await waitForServer(baseUrl, 5000)
   if (alreadyReadyUrl) {
-    if (alreadyReadyUrl !== baseUrl) {
-      logger?.log?.(`Capture server reachable at ${alreadyReadyUrl} (configured baseUrl: ${baseUrl})`)
-    }
+    logger?.log?.(
+      `Capture server already running at ${alreadyReadyUrl}; skipping startCommand (configured baseUrl: ${baseUrl})`
+    )
     return { proc: null, baseUrl: alreadyReadyUrl }
   }
 
@@ -116,7 +175,7 @@ async function ensureServer({ baseUrl, timeoutMs, startCommand, env, cwd, logger
 
   const readyUrl = await waitForServer(baseUrl, timeoutMs)
   if (!readyUrl) {
-    proc.kill("SIGTERM")
+    await stopServerProcess(proc, logger)
     throw new Error(`Capture server did not become ready at ${baseUrl}`)
   }
 
@@ -451,14 +510,14 @@ export function createPlaywrightCaptureHarness(options = {}) {
     } finally {
       await browser.close()
       if (server.proc) {
-        server.proc.kill("SIGTERM")
+        await stopServerProcess(server.proc, logger)
       }
     }
   }
 }
 
 export const defaultCaptureDevices = DEFAULT_DEVICES
-export { buildServerProbeUrls }
+export { buildServerProbeUrls, isServerReadyResponse }
 
 export function validatePlaywrightCaptureDefinition(options = {}) {
   if (options.devices !== undefined) {
