@@ -57,7 +57,7 @@ function startProgressAnimation(label) {
   let frame = 0
   const render = () => {
     const symbol = SPINNER_FRAMES[frame % SPINNER_FRAMES.length]
-    process.stdout.write(`\r[uxl:review] ${label} ${symbol}`)
+    process.stdout.write(`\r${label} ${symbol}`)
     frame += 1
   }
 
@@ -67,7 +67,7 @@ function startProgressAnimation(label) {
   return {
     stop(message) {
       clearInterval(timer)
-      process.stdout.write(`\r[uxl:review] ${message}\n`)
+      process.stdout.write(`\r${message}\n`)
     },
   }
 }
@@ -87,6 +87,26 @@ function countIssuesInCritique(text) {
   return 1
 }
 
+function pad2(value) {
+  return String(value).padStart(2, "0")
+}
+
+function buildTimestampedReportName(date = new Date()) {
+  const yyyy = date.getFullYear()
+  const mm = pad2(date.getMonth() + 1)
+  const dd = pad2(date.getDate())
+  const hh = pad2(date.getHours())
+  const min = pad2(date.getMinutes())
+  return `uxl_report_${yyyy}-${mm}-${dd}_${hh}${min}.md`
+}
+
+function resolveReportOutputPath(configuredReportPath, date = new Date()) {
+  if (path.basename(configuredReportPath) !== "report.md") {
+    return configuredReportPath
+  }
+  return path.join(path.dirname(configuredReportPath), buildTimestampedReportName(date))
+}
+
 export async function runReview(args = [], cwd = process.cwd()) {
   const overrides = parseReviewArgs(args)
   const config = await loadConfig(cwd)
@@ -98,6 +118,7 @@ export async function runReview(args = [], cwd = process.cwd()) {
   const model = overrides.model || config.review.model
   const reasoningEffort = overrides.reasoningEffort || config.review.reasoningEffort
   const prompt = config.review.systemPrompt || DEFAULT_REVIEW_PROMPT
+  const reportOutputPath = resolveReportOutputPath(config.paths.reportPath)
 
   if (!["codex", "copilot", "openai"].includes(runner)) {
     throw new Error(`Invalid review runner: "${runner}". Allowed: codex, copilot, openai.`)
@@ -116,7 +137,7 @@ export async function runReview(args = [], cwd = process.cwd()) {
 
   logger.log(`Starting review in ${config.paths.root}`)
   logger.log(`Manifest: ${config.paths.manifestPath}`)
-  logger.log(`Report output: ${config.paths.reportPath}`)
+  logger.log(`Report output: ${reportOutputPath}`)
   logger.log(`Runner: ${runner}`)
   logger.log(`Model: ${model || "default"}`)
   logger.log(`Reasoning effort: ${reasoningEffort || "default"}`)
@@ -191,9 +212,9 @@ export async function runReview(args = [], cwd = process.cwd()) {
     logger.log(`Completed group ${index + 1}/${manifest.groups.length}: ${group.label}`)
   }
 
-  fs.mkdirSync(path.dirname(config.paths.reportPath), { recursive: true })
-  fs.writeFileSync(config.paths.reportPath, `${report.join("\n")}\n`, "utf8")
+  fs.mkdirSync(path.dirname(reportOutputPath), { recursive: true })
+  fs.writeFileSync(reportOutputPath, `${report.join("\n")}\n`, "utf8")
   logger.log(`Finished review for ${manifest.groups.length} groups`)
   logger.log(`Summary: ${totalIssues} issue${totalIssues === 1 ? "" : "s"} found`)
-  logger.log(`Report written: ${config.paths.reportPath}`)
+  logger.log(`Report written: ${reportOutputPath}`)
 }

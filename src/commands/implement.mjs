@@ -1,4 +1,5 @@
 import fs from "fs"
+import path from "path"
 import { loadConfig } from "../config/load-config.mjs"
 import { resolveTarget } from "../git/target-resolver.mjs"
 import { buildDefaultImplementPrompt } from "../prompts/default-implement-prompt.mjs"
@@ -34,14 +35,49 @@ function validateReasoningEffort(value, sourceLabel) {
 }
 
 function readReport(reportPath) {
-  if (!fs.existsSync(reportPath)) {
-    throw new Error(`Report not found: ${reportPath}. Run \`uxl review\` first.`)
+  const resolvedReportPath = resolveReportInputPath(reportPath)
+
+  if (!fs.existsSync(resolvedReportPath)) {
+    throw new Error(`Report not found: ${resolvedReportPath}. Run \`uxl review\` first.`)
   }
-  const text = fs.readFileSync(reportPath, "utf8").trim()
+  const text = fs.readFileSync(resolvedReportPath, "utf8").trim()
   if (!text) {
-    throw new Error(`Report is empty: ${reportPath}. Run \`uxl review\` first.`)
+    throw new Error(`Report is empty: ${resolvedReportPath}. Run \`uxl review\` first.`)
   }
   return text
+}
+
+function resolveReportInputPath(reportPath) {
+  if (!fs.existsSync(reportPath)) {
+    if (path.basename(reportPath) !== "report.md") {
+      throw new Error(`Report not found: ${reportPath}. Run \`uxl review\` first.`)
+    }
+
+    const latestReportPath = findLatestTimestampedReport(path.dirname(reportPath))
+    if (!latestReportPath) {
+      throw new Error(`Report not found: ${reportPath}. Run \`uxl review\` first.`)
+    }
+    return latestReportPath
+  }
+
+  if (path.basename(reportPath) !== "report.md") {
+    return reportPath
+  }
+
+  const latestReportPath = findLatestTimestampedReport(path.dirname(reportPath))
+  return latestReportPath || reportPath
+}
+
+function findLatestTimestampedReport(reportDir) {
+  if (!fs.existsSync(reportDir)) return undefined
+
+  const matches = fs
+    .readdirSync(reportDir)
+    .filter((entry) => /^uxl_report_\d{4}-\d{2}-\d{2}_\d{4}\.md$/.test(entry))
+    .sort()
+
+  if (matches.length === 0) return undefined
+  return path.join(reportDir, matches[matches.length - 1])
 }
 
 export async function runImplement(args = [], cwd = process.cwd()) {

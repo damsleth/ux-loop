@@ -10,6 +10,32 @@ function toLines(message) {
   return text.split(/\r?\n/)
 }
 
+function pad2(value) {
+  return String(value).padStart(2, "0")
+}
+
+function pad3(value) {
+  return String(value).padStart(3, "0")
+}
+
+function formatTerminalTime(date) {
+  const centiseconds = Math.floor(date.getMilliseconds() / 10)
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}.${pad2(centiseconds)}`
+}
+
+function formatTimezoneOffset(date) {
+  const totalMinutes = -date.getTimezoneOffset()
+  const sign = totalMinutes >= 0 ? "+" : "-"
+  const absoluteMinutes = Math.abs(totalMinutes)
+  const hours = Math.floor(absoluteMinutes / 60)
+  const minutes = absoluteMinutes % 60
+  return `GMT${sign}${pad2(hours)}:${pad2(minutes)}`
+}
+
+function formatFileTimestamp(date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}.${pad3(date.getMilliseconds())} ${formatTimezoneOffset(date)}`
+}
+
 export function createCommandLogger({ scope, logsDir }) {
   if (!scope || !logsDir) {
     throw new Error("createCommandLogger requires scope and logsDir.")
@@ -21,11 +47,13 @@ export function createCommandLogger({ scope, logsDir }) {
   const write = (level, message) => {
     const lines = toLines(message)
     for (const line of lines) {
-      const prefixed = `[${new Date().toISOString()}] [uxl:${scope}] ${line}`
-      fs.appendFileSync(logPath, `${prefixed}\n`, "utf8")
-      if (level === "error") console.error(prefixed)
-      else if (level === "warn") console.warn(prefixed)
-      else console.log(prefixed)
+      const now = new Date()
+      const fileLine = `[${formatFileTimestamp(now)}] [uxl:${scope}] ${line}`
+      const terminalLine = `[${formatTerminalTime(now)}] ${line}`
+      fs.appendFileSync(logPath, `${fileLine}\n`, "utf8")
+      if (level === "error") console.error(terminalLine)
+      else if (level === "warn") console.warn(terminalLine)
+      else console.log(terminalLine)
     }
   }
 
