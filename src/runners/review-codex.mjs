@@ -22,6 +22,7 @@ export async function reviewWithCodex({ codexBin, model, prompt, label, filePath
 
   const args = [
     "exec",
+    "--full-auto",
     "--ephemeral",
     "--color",
     "never",
