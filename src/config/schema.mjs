@@ -32,6 +32,7 @@ const DEFAULTS = {
   review: {
     runner: "codex",
     model: undefined,
+    reasoningEffort: undefined,
     systemPrompt: undefined,
     codex: {
       bin: "codex",
@@ -56,6 +57,7 @@ const DEFAULTS = {
       bin: "copilot",
     },
     model: undefined,
+    reasoningEffort: undefined,
   },
   run: {
     runShots: true,
@@ -92,6 +94,11 @@ function validateEnum(value, allowed, label) {
   if (!allowed.includes(value)) {
     throw new Error(`Invalid ${label}: "${value}". Allowed: ${allowed.join(", ")}.`)
   }
+}
+
+function validateOptionalEnum(value, allowed, label) {
+  if (value === undefined) return
+  validateEnum(value, allowed, label)
 }
 
 function validateFlowInventory(flowInventory, configFilePath) {
@@ -203,6 +210,8 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
   validateEnum(merged.review.runner, ["codex", "copilot", "openai"], "review.runner")
   validateEnum(merged.implement.runner, ["codex", "copilot"], "implement.runner")
   validateEnum(merged.implement.target, ["current", "branch", "worktree"], "implement.target")
+  validateOptionalEnum(merged.review.reasoningEffort, ["low", "medium", "high", "extraHigh"], "review.reasoningEffort")
+  validateOptionalEnum(merged.implement.reasoningEffort, ["low", "medium", "high", "extraHigh"], "implement.reasoningEffort")
 
   if (!isObject(merged.capture.onboarding)) {
     throw new Error(`capture.onboarding must be an object in ${configFilePath}.`)

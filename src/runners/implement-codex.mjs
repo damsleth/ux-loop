@@ -1,6 +1,6 @@
 import { runCommand } from "../utils/process.mjs"
 
-export function runCodexImplement({ codexBin, model, workDir, prompt }) {
+export function runCodexImplement({ codexBin, model, reasoningEffort, workDir, prompt }) {
   const args = [
     "exec",
     "--full-auto",
@@ -14,6 +14,10 @@ export function runCodexImplement({ codexBin, model, workDir, prompt }) {
 
   if (model) {
     args.push("--model", model)
+  }
+
+  if (reasoningEffort) {
+    args.push("-c", `model_reasoning_effort=${reasoningEffort}`)
   }
 
   args.push("-")

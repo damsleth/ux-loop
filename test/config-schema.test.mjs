@@ -42,6 +42,28 @@ test("normalizeConfig accepts copilot runners", () => {
   assert.equal(config.implement.runner, "copilot")
 })
 
+test("normalizeConfig accepts reasoning effort values", () => {
+  const config = normalizeConfig({
+    review: { reasoningEffort: "extraHigh" },
+    implement: { reasoningEffort: "medium" },
+  })
+
+  assert.equal(config.review.reasoningEffort, "extraHigh")
+  assert.equal(config.implement.reasoningEffort, "medium")
+})
+
+test("normalizeConfig validates reasoning effort enums", () => {
+  assert.throws(
+    () => normalizeConfig({ review: { reasoningEffort: "max" } }),
+    /Invalid review\.reasoningEffort/
+  )
+
+  assert.throws(
+    () => normalizeConfig({ implement: { reasoningEffort: "max" } }),
+    /Invalid implement\.reasoningEffort/
+  )
+})
+
 test("normalizeConfig resolves capture adapter path when provided", () => {
   const config = normalizeConfig({
     paths: { root: "/tmp/workspace" },

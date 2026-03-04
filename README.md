@@ -108,9 +108,11 @@ export default defineUxlConfig({
   },
   review: {
     runner: "codex", // codex | copilot | openai
+    reasoningEffort: "medium", // low | medium | high | extraHigh
   },
   implement: {
     runner: "codex", // codex | copilot
+    reasoningEffort: "medium", // low | medium | high | extraHigh
     target: "worktree",
   },
 })

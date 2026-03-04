@@ -16,7 +16,7 @@ function formatCommand(command, args) {
   return [command, ...args.map((arg) => quoteArg(arg))].join(" ")
 }
 
-export async function reviewWithCodex({ codexBin, model, prompt, label, filePaths, logger = console }) {
+export async function reviewWithCodex({ codexBin, model, reasoningEffort, prompt, label, filePaths, logger = console }) {
   for (const filePath of filePaths) {
     if (!fs.existsSync(filePath)) {
       throw new Error(`Missing screenshot: ${filePath}`)
@@ -42,6 +42,9 @@ export async function reviewWithCodex({ codexBin, model, prompt, label, filePath
   ]
   if (model) {
     args.push("--model", model)
+  }
+  if (reasoningEffort) {
+    args.push("-c", `model_reasoning_effort=${reasoningEffort}`)
   }
   args.push("--image", filePaths.join(","), "-")
 

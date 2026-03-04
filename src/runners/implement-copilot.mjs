@@ -4,6 +4,10 @@ export function runCopilotImplement({ copilotBin, model, workDir, prompt }) {
   const args = [
     "--allow-all-tools",
     "--no-color",
+    "--stream",
+    "off",
+    "--log-level",
+    "error",
     "--add-dir",
     workDir,
     "--prompt",

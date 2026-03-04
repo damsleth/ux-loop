@@ -31,6 +31,10 @@ ${screenshotList}`
   const args = [
     "--allow-all-tools",
     "--no-color",
+    "--stream",
+    "off",
+    "--log-level",
+    "error",
     "--add-dir",
     rootDir,
     "--prompt",

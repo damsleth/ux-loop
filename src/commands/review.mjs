@@ -84,6 +84,7 @@ export async function runReview(args = [], cwd = process.cwd()) {
 
   const runner = (overrides.runner || config.review.runner || "codex").toLowerCase()
   const model = overrides.model || config.review.model
+  const reasoningEffort = config.review.reasoningEffort
   const prompt = config.review.systemPrompt || DEFAULT_REVIEW_PROMPT
 
   if (!["codex", "copilot", "openai"].includes(runner)) {
@@ -106,6 +107,7 @@ export async function runReview(args = [], cwd = process.cwd()) {
   logger.log(`Report output: ${config.paths.reportPath}`)
   logger.log(`Runner: ${runner}`)
   logger.log(`Model: ${model || "default"}`)
+  logger.log(`Reasoning effort: ${reasoningEffort || "default"}`)
   logger.log(`Screenshot groups: ${manifest.groups.length}`)
   logger.log(`System prompt:\n${prompt}`)
 
@@ -120,6 +122,7 @@ export async function runReview(args = [], cwd = process.cwd()) {
       : "Runner: OpenAI API"
   report.push(runnerDescription)
   report.push(`Model: ${model || "default"}`)
+  report.push(`Reasoning effort: ${reasoningEffort || "default"}`)
   report.push("")
   let totalIssues = 0
 
@@ -138,6 +141,7 @@ export async function runReview(args = [], cwd = process.cwd()) {
           ? await reviewWithCodex({
               codexBin: config.review.codex.bin,
               model,
+              reasoningEffort,
               prompt,
               label: group.label,
               filePaths,

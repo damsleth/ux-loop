@@ -53,6 +53,7 @@ export async function runImplement(args = [], cwd = process.cwd()) {
 
   const prompt = buildDefaultImplementPrompt(reportMarkdown)
   const model = overrides.model || config.implement.model
+  const reasoningEffort = config.implement.reasoningEffort
 
   console.log(prepared.summary)
   if (runner === "copilot") {
@@ -66,6 +67,7 @@ export async function runImplement(args = [], cwd = process.cwd()) {
     runCodexImplement({
       codexBin: config.implement.codex.bin,
       model,
+      reasoningEffort,
       workDir: prepared.workDir,
       prompt,
     })
