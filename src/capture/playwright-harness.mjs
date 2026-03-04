@@ -26,18 +26,52 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function buildServerProbeUrls(baseUrl) {
+  let parsed
+  try {
+    parsed = new URL(baseUrl)
+  } catch {
+    return [baseUrl]
+  }
+
+  const loopbackAliases = {
+    localhost: ["127.0.0.1", "[::1]"],
+    "127.0.0.1": ["localhost", "[::1]"],
+    "[::1]": ["localhost", "127.0.0.1"],
+  }
+
+  const aliases = loopbackAliases[parsed.hostname] || []
+  const seen = new Set()
+  const candidates = []
+
+  for (const hostname of [parsed.hostname, ...aliases]) {
+    const candidate = new URL(baseUrl)
+    candidate.hostname = hostname
+    const href = candidate.toString()
+    if (!seen.has(href)) {
+      seen.add(href)
+      candidates.push(href)
+    }
+  }
+
+  return candidates
+}
+
 async function waitForServer(url, timeoutMs = 120000) {
+  const probeUrls = buildServerProbeUrls(url)
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
-    try {
-      const response = await fetch(url, { method: "GET" })
-      if (response.ok) return true
-    } catch {
-      // retry
+    for (const probeUrl of probeUrls) {
+      try {
+        const response = await fetch(probeUrl, { method: "GET" })
+        if (response.ok) return probeUrl
+      } catch {
+        // retry
+      }
     }
     await sleep(500)
   }
-  return false
+  return null
 }
 
 function normalizeStartCommand(startCommand) {
@@ -58,11 +92,14 @@ function normalizeStartCommand(startCommand) {
 }
 
 async function ensureServer({ baseUrl, timeoutMs, startCommand, env, cwd, logger }) {
-  if (!baseUrl) return { proc: null }
+  if (!baseUrl) return { proc: null, baseUrl }
 
-  const alreadyReady = await waitForServer(baseUrl, 2000)
-  if (alreadyReady) {
-    return { proc: null }
+  const alreadyReadyUrl = await waitForServer(baseUrl, 2000)
+  if (alreadyReadyUrl) {
+    if (alreadyReadyUrl !== baseUrl) {
+      logger?.log?.(`Capture server reachable at ${alreadyReadyUrl} (configured baseUrl: ${baseUrl})`)
+    }
+    return { proc: null, baseUrl: alreadyReadyUrl }
   }
 
   const normalizedStart = normalizeStartCommand(startCommand)
@@ -77,13 +114,17 @@ async function ensureServer({ baseUrl, timeoutMs, startCommand, env, cwd, logger
     env,
   })
 
-  const ready = await waitForServer(baseUrl, timeoutMs)
-  if (!ready) {
+  const readyUrl = await waitForServer(baseUrl, timeoutMs)
+  if (!readyUrl) {
     proc.kill("SIGTERM")
     throw new Error(`Capture server did not become ready at ${baseUrl}`)
   }
 
-  return { proc }
+  if (readyUrl !== baseUrl) {
+    logger?.log?.(`Capture server is ready at ${readyUrl} (configured baseUrl: ${baseUrl})`)
+  }
+
+  return { proc, baseUrl: readyUrl }
 }
 
 async function applyAction(page, action) {
@@ -362,6 +403,7 @@ export function createPlaywrightCaptureHarness(options = {}) {
       cwd: rootDir,
       logger,
     })
+    const activeBaseUrl = server.baseUrl || baseUrl
 
     const browser = await chromium.launch(options.launch || {})
 
@@ -388,7 +430,7 @@ export function createPlaywrightCaptureHarness(options = {}) {
             const screenshotPath = await runFlow({
               page,
               flow,
-              baseUrl,
+              baseUrl: activeBaseUrl,
               shotsDir,
               deviceName: device.name,
               runtime,
@@ -416,6 +458,7 @@ export function createPlaywrightCaptureHarness(options = {}) {
 }
 
 export const defaultCaptureDevices = DEFAULT_DEVICES
+export { buildServerProbeUrls }
 
 export function validatePlaywrightCaptureDefinition(options = {}) {
   if (options.devices !== undefined) {
