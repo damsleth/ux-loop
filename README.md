@@ -163,8 +163,8 @@ export async function captureUx(context) {
 - `uxl init [--preset=playwright-vite] [--force] [--non-interactive]`
 - `uxl flows <list|add|map|check|import-playwright>`
 - `uxl shots`
-- `uxl review`
-- `uxl implement`
+- `uxl review [--reasoning-effort low|medium|high|extraHigh]`
+- `uxl implement [--reasoning-effort low|medium|high|extraHigh]`
 - `uxl run`
 
 ## Release

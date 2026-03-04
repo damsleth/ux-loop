@@ -6,6 +6,8 @@ import { runCodexImplement } from "../runners/implement-codex.mjs"
 import { runCopilotImplement } from "../runners/implement-copilot.mjs"
 import { assertCommandAvailable } from "../utils/process.mjs"
 
+const REASONING_EFFORT_VALUES = ["low", "medium", "high", "extraHigh"]
+
 export function parseImplementArgs(args) {
   const values = {}
   for (let i = 0; i < args.length; i += 1) {
@@ -18,8 +20,17 @@ export function parseImplementArgs(args) {
     else if (token === "--worktree") values.worktree = args[i + 1]
     if (token.startsWith("--model=")) values.model = token.slice("--model=".length)
     else if (token === "--model") values.model = args[i + 1]
+    if (token.startsWith("--reasoning-effort=")) values.reasoningEffort = token.slice("--reasoning-effort=".length)
+    else if (token === "--reasoning-effort") values.reasoningEffort = args[i + 1]
   }
   return values
+}
+
+function validateReasoningEffort(value, sourceLabel) {
+  if (value === undefined) return
+  if (!REASONING_EFFORT_VALUES.includes(value)) {
+    throw new Error(`Invalid ${sourceLabel}: "${value}". Allowed: ${REASONING_EFFORT_VALUES.join(", ")}.`)
+  }
 }
 
 function readReport(reportPath) {
@@ -37,6 +48,7 @@ export async function runImplement(args = [], cwd = process.cwd()) {
   const overrides = parseImplementArgs(args)
   const config = await loadConfig(cwd)
   const runner = (config.implement.runner || "codex").toLowerCase()
+  validateReasoningEffort(overrides.reasoningEffort, "--reasoning-effort")
   if (!["codex", "copilot"].includes(runner)) {
     throw new Error(`Invalid implement.runner: "${runner}". Allowed: codex, copilot.`)
   }
@@ -53,7 +65,7 @@ export async function runImplement(args = [], cwd = process.cwd()) {
 
   const prompt = buildDefaultImplementPrompt(reportMarkdown)
   const model = overrides.model || config.implement.model
-  const reasoningEffort = config.implement.reasoningEffort
+  const reasoningEffort = overrides.reasoningEffort || config.implement.reasoningEffort
 
   console.log(prepared.summary)
   if (runner === "copilot") {

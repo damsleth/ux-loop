@@ -7,6 +7,8 @@ import { assertCopilotReady, reviewWithCopilot } from "../runners/review-copilot
 import { reviewWithOpenAi } from "../runners/review-openai.mjs"
 import { createCommandLogger } from "../utils/command-logger.mjs"
 
+const REASONING_EFFORT_VALUES = ["low", "medium", "high", "extraHigh"]
+
 export function parseReviewArgs(args) {
   const values = {}
   for (let i = 0; i < args.length; i += 1) {
@@ -15,8 +17,17 @@ export function parseReviewArgs(args) {
     else if (token === "--runner") values.runner = args[i + 1]
     if (token.startsWith("--model=")) values.model = token.slice("--model=".length)
     else if (token === "--model") values.model = args[i + 1]
+    if (token.startsWith("--reasoning-effort=")) values.reasoningEffort = token.slice("--reasoning-effort=".length)
+    else if (token === "--reasoning-effort") values.reasoningEffort = args[i + 1]
   }
   return values
+}
+
+function validateReasoningEffort(value, sourceLabel) {
+  if (value === undefined) return
+  if (!REASONING_EFFORT_VALUES.includes(value)) {
+    throw new Error(`Invalid ${sourceLabel}: "${value}". Allowed: ${REASONING_EFFORT_VALUES.join(", ")}.`)
+  }
 }
 
 function readManifest(manifestPath) {
@@ -81,10 +92,11 @@ export async function runReview(args = [], cwd = process.cwd()) {
   const config = await loadConfig(cwd)
   const manifest = readManifest(config.paths.manifestPath)
   const logger = createCommandLogger({ scope: "review", logsDir: config.paths.logsDir })
+  validateReasoningEffort(overrides.reasoningEffort, "--reasoning-effort")
 
   const runner = (overrides.runner || config.review.runner || "codex").toLowerCase()
   const model = overrides.model || config.review.model
-  const reasoningEffort = config.review.reasoningEffort
+  const reasoningEffort = overrides.reasoningEffort || config.review.reasoningEffort
   const prompt = config.review.systemPrompt || DEFAULT_REVIEW_PROMPT
 
   if (!["codex", "copilot", "openai"].includes(runner)) {

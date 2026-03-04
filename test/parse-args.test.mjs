@@ -32,6 +32,14 @@ test("parseReviewArgs parses --runner and --model together", () => {
   assert.equal(result.model, "gpt-4o")
 })
 
+test("parseReviewArgs parses --reasoning-effort inline form", () => {
+  assert.equal(parseReviewArgs(["--reasoning-effort=high"]).reasoningEffort, "high")
+})
+
+test("parseReviewArgs parses --reasoning-effort space-separated form", () => {
+  assert.equal(parseReviewArgs(["--reasoning-effort", "medium"]).reasoningEffort, "medium")
+})
+
 // --- parseImplementArgs ---
 
 test("parseImplementArgs returns empty object for no args", () => {
@@ -58,14 +66,20 @@ test("parseImplementArgs parses --model", () => {
   assert.equal(parseImplementArgs(["--model", "o3"]).model, "o3")
 })
 
+test("parseImplementArgs parses --reasoning-effort", () => {
+  assert.equal(parseImplementArgs(["--reasoning-effort", "low"]).reasoningEffort, "low")
+})
+
 test("parseImplementArgs parses all flags together", () => {
   const result = parseImplementArgs([
     "--target=worktree",
     "--branch",
     "uxl-feat",
     "--model=o3",
+    "--reasoning-effort=extraHigh",
   ])
   assert.equal(result.target, "worktree")
   assert.equal(result.branch, "uxl-feat")
   assert.equal(result.model, "o3")
+  assert.equal(result.reasoningEffort, "extraHigh")
 })
