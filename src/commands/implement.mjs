@@ -3,6 +3,7 @@ import { loadConfig } from "../config/load-config.mjs"
 import { resolveTarget } from "../git/target-resolver.mjs"
 import { buildDefaultImplementPrompt } from "../prompts/default-implement-prompt.mjs"
 import { runCodexImplement } from "../runners/implement-codex.mjs"
+import { runCopilotImplement } from "../runners/implement-copilot.mjs"
 import { assertCommandAvailable } from "../utils/process.mjs"
 
 export function parseImplementArgs(args) {
@@ -35,7 +36,13 @@ function readReport(reportPath) {
 export async function runImplement(args = [], cwd = process.cwd()) {
   const overrides = parseImplementArgs(args)
   const config = await loadConfig(cwd)
-  assertCommandAvailable(config.implement.codex.bin)
+  const runner = (config.implement.runner || "codex").toLowerCase()
+  if (!["codex", "copilot"].includes(runner)) {
+    throw new Error(`Invalid implement.runner: "${runner}". Allowed: codex, copilot.`)
+  }
+
+  const bin = runner === "copilot" ? config.implement.copilot.bin : config.implement.codex.bin
+  assertCommandAvailable(bin)
 
   const reportMarkdown = readReport(config.paths.reportPath)
   const prepared = resolveTarget({
@@ -48,12 +55,21 @@ export async function runImplement(args = [], cwd = process.cwd()) {
   const model = overrides.model || config.implement.model
 
   console.log(prepared.summary)
-  runCodexImplement({
-    codexBin: config.implement.codex.bin,
-    model,
-    workDir: prepared.workDir,
-    prompt,
-  })
+  if (runner === "copilot") {
+    runCopilotImplement({
+      copilotBin: config.implement.copilot.bin,
+      model,
+      workDir: prepared.workDir,
+      prompt,
+    })
+  } else {
+    runCodexImplement({
+      codexBin: config.implement.codex.bin,
+      model,
+      workDir: prepared.workDir,
+      prompt,
+    })
+  }
 
   console.log("UX implementation run completed.")
   if ((overrides.target || config.implement.target) === "worktree") {

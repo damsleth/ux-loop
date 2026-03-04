@@ -32,6 +32,16 @@ test("normalizeConfig validates review runner enum", () => {
   )
 })
 
+test("normalizeConfig accepts copilot runners", () => {
+  const config = normalizeConfig({
+    review: { runner: "copilot" },
+    implement: { runner: "copilot" },
+  })
+
+  assert.equal(config.review.runner, "copilot")
+  assert.equal(config.implement.runner, "copilot")
+})
+
 test("normalizeConfig resolves capture adapter path when provided", () => {
   const config = normalizeConfig({
     paths: { root: "/tmp/workspace" },

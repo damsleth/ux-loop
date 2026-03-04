@@ -3,6 +3,7 @@ import path from "path"
 import { loadConfig } from "../config/load-config.mjs"
 import { DEFAULT_REVIEW_PROMPT } from "../prompts/default-review-prompt.mjs"
 import { assertCodexReady, reviewWithCodex } from "../runners/review-codex.mjs"
+import { assertCopilotReady, reviewWithCopilot } from "../runners/review-copilot.mjs"
 import { reviewWithOpenAi } from "../runners/review-openai.mjs"
 import { createCommandLogger } from "../utils/command-logger.mjs"
 
@@ -85,12 +86,19 @@ export async function runReview(args = [], cwd = process.cwd()) {
   const model = overrides.model || config.review.model
   const prompt = config.review.systemPrompt || DEFAULT_REVIEW_PROMPT
 
+  if (!["codex", "copilot", "openai"].includes(runner)) {
+    throw new Error(`Invalid review runner: "${runner}". Allowed: codex, copilot, openai.`)
+  }
+
   if (runner === "openai" && !model) {
     throw new Error("review.model is required when using the OpenAI runner. Set it in config or pass --model.")
   }
 
   if (runner === "codex") {
     assertCodexReady(config.review.codex.bin)
+  }
+  if (runner === "copilot") {
+    assertCopilotReady(config.review.copilot.bin)
   }
 
   logger.log(`Starting review in ${config.paths.root}`)
@@ -105,7 +113,12 @@ export async function runReview(args = [], cwd = process.cwd()) {
   report.push("# UX Review Report")
   report.push("")
   report.push(`Generated: ${new Date().toISOString()}`)
-  report.push(runner === "codex" ? `Runner: codex CLI (${config.review.codex.bin})` : "Runner: OpenAI API")
+  const runnerDescription = runner === "codex"
+    ? `Runner: codex CLI (${config.review.codex.bin})`
+    : runner === "copilot"
+      ? `Runner: copilot CLI (${config.review.copilot.bin})`
+      : "Runner: OpenAI API"
+  report.push(runnerDescription)
   report.push(`Model: ${model || "default"}`)
   report.push("")
   let totalIssues = 0
@@ -130,6 +143,16 @@ export async function runReview(args = [], cwd = process.cwd()) {
               filePaths,
               logger,
             })
+          : runner === "copilot"
+            ? await reviewWithCopilot({
+                copilotBin: config.review.copilot.bin,
+                model,
+                prompt,
+                label: group.label,
+                filePaths,
+                rootDir: config.paths.root,
+                logger,
+              })
           : await reviewWithOpenAi({
               apiKey: process.env[config.review.openai.apiKeyEnv],
               model,

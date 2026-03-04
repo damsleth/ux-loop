@@ -4,7 +4,7 @@ Generic CLI-first UX pipeline for npm projects:
 
 - `shots` (capture screenshots)
 - `review` (visual critique)
-- `implement` (apply changes with Codex)
+- `implement` (apply changes with Codex or Copilot)
 - `run` (all three in sequence)
 
 ## Strict flow mapping (default)
@@ -24,6 +24,10 @@ Optional (only if using `uxl review --runner openai`):
 ```bash
 npm i openai
 ```
+
+Optional (only if using `review.runner = "copilot"` or `implement.runner = "copilot"`):
+
+- Install GitHub Copilot CLI and make sure `copilot` is on `PATH`.
 
 ## Scripts
 
@@ -103,9 +107,10 @@ export default defineUxlConfig({
     },
   },
   review: {
-    runner: "codex",
+    runner: "codex", // codex | copilot | openai
   },
   implement: {
+    runner: "codex", // codex | copilot
     target: "worktree",
   },
 })

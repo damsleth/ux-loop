@@ -36,6 +36,9 @@ const DEFAULTS = {
     codex: {
       bin: "codex",
     },
+    copilot: {
+      bin: "copilot",
+    },
     openai: {
       apiKeyEnv: "OPENAI_API_KEY",
     },
@@ -48,6 +51,9 @@ const DEFAULTS = {
     autoCommit: false,
     codex: {
       bin: "codex",
+    },
+    copilot: {
+      bin: "copilot",
     },
     model: undefined,
   },
@@ -194,8 +200,8 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
     throw new Error(`capture.playwright must be an object in ${configFilePath}.`)
   }
 
-  validateEnum(merged.review.runner, ["codex", "openai"], "review.runner")
-  validateEnum(merged.implement.runner, ["codex"], "implement.runner")
+  validateEnum(merged.review.runner, ["codex", "copilot", "openai"], "review.runner")
+  validateEnum(merged.implement.runner, ["codex", "copilot"], "implement.runner")
   validateEnum(merged.implement.target, ["current", "branch", "worktree"], "implement.target")
 
   if (!isObject(merged.capture.onboarding)) {
