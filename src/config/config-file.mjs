@@ -20,7 +20,13 @@ export async function loadRawConfig(cwd = process.cwd()) {
     throw new Error(`Missing uxl.config.mjs at ${configPath}. Run \`uxl init\`.`)
   }
 
-  const loaded = await import(`${pathToFileURL(configPath).href}?t=${Date.now()}`)
+  let loaded
+  try {
+    loaded = await import(`${pathToFileURL(configPath).href}?t=${Date.now()}`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`Failed to load uxl.config.mjs at ${configPath}: ${message}`)
+  }
   const raw = loaded?.default
   if (!raw || typeof raw !== "object") {
     throw new Error("uxl.config.mjs must export a default config object via defineUxlConfig().")

@@ -74,23 +74,6 @@ Running `uxl flows map` overwrites existing flow mappings silently. There is no 
 
 ---
 
-### M-4: `loadRawConfig` has no error handling for import failure
-
-**File**: [src/config/config-file.mjs](src/config/config-file.mjs)
-
-```js
-export async function loadRawConfig(cwd) {
-  const configPath = getConfigPath(cwd)
-  const url = pathToFileURL(configPath).href + `?v=${Date.now()}`
-  const mod = await import(url)  // no try/catch
-  ...
-}
-```
-
-A syntax error in the user's `uxl.config.mjs` will throw an unhandled `SyntaxError` or `TypeError` with no message indicating which file failed or how to fix it. The error will propagate unformatted to the terminal.
-
----
-
 ### M-5: `resolveReportInputPath` logic is confusing and has an edge case
 
 **File**: [src/commands/implement.mjs](src/commands/implement.mjs#L50-L69)
