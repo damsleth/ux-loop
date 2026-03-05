@@ -176,7 +176,7 @@ async function runAdd(cwd, parsedFlags) {
   printCoverageSummary(report)
 }
 
-async function runMap(cwd, parsedFlags) {
+async function runMap(cwd, parsedFlags, runtime = {}) {
   const id = ensureRequiredValue(parsedFlags.id, "id")
   const mappedTo = ensureRequiredValue(parsedFlags.to, "to")
 
@@ -186,6 +186,28 @@ async function runMap(cwd, parsedFlags) {
   const inventoryEntry = raw.capture.flowInventory.find((entry) => entry.id === id)
   if (!inventoryEntry) {
     throw new Error(`Unknown flow inventory id: ${id}`)
+  }
+
+  const existingMapping = Array.isArray(raw.capture.flowMapping[id]) ? raw.capture.flowMapping[id] : []
+  const hasExisting = existingMapping.length > 0
+  if (hasExisting && !parsedFlags.force) {
+    if (!process.stdin.isTTY && !runtime.prompt) {
+      throw new Error(`Mapping for ${id} already exists. Re-run with --force to overwrite.`)
+    }
+
+    const prompt = runtime.prompt
+      ? { ask: runtime.prompt, close: async () => {} }
+      : createPrompt()
+    try {
+      const answer = await prompt.ask(`Mapping for ${id} exists (${existingMapping.join(", ")}). Overwrite? Type yes: `)
+      const confirmed = String(answer || "").trim().toLowerCase() === "yes"
+      if (!confirmed) {
+        console.log("Mapping update aborted.")
+        return
+      }
+    } finally {
+      await prompt.close()
+    }
   }
 
   raw.capture.flowMapping[id] = mappedTo
@@ -303,7 +325,7 @@ export async function runFlows(args = [], cwd = process.cwd(), runtime = {}) {
   }
 
   if (subcommand === "map") {
-    await runMap(cwd, parsed)
+    await runMap(cwd, parsed, runtime)
     return
   }
 

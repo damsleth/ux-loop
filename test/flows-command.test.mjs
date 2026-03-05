@@ -111,3 +111,40 @@ test("runFlows import-playwright applies suggestions and keeps onboarding pendin
   assert.equal(hasImported, true)
   assert.equal(raw.capture.onboarding.status, "pending")
 })
+
+test("runFlows map requires confirmation or --force when mapping already exists", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-flows-map-guard-"))
+  installUxlStub(cwd)
+  writeBaseConfig(cwd)
+
+  await assert.rejects(
+    () => runFlows(["map", "--id", "home", "--to", "alternate"] , cwd),
+    /--force to overwrite/
+  )
+})
+
+test("runFlows map overwrites existing mapping with --force", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-flows-map-force-"))
+  installUxlStub(cwd)
+  writeBaseConfig(cwd)
+
+  await runFlows(["map", "--id", "home", "--to", "alternate", "--force"], cwd)
+
+  const { raw } = await loadRawConfig(cwd)
+  assert.deepEqual(raw.capture.flowMapping.home, ["alternate"])
+})
+
+test("runFlows map accepts interactive confirmation prompt", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-flows-map-prompt-"))
+  installUxlStub(cwd)
+  writeBaseConfig(cwd)
+
+  await runFlows(
+    ["map", "--id", "home", "--to", "alternate"],
+    cwd,
+    { prompt: async () => "yes" }
+  )
+
+  const { raw } = await loadRawConfig(cwd)
+  assert.deepEqual(raw.capture.flowMapping.home, ["alternate"])
+})

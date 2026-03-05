@@ -48,15 +48,9 @@ Several issues were identified spanning correctness bugs, missing error handling
 **File**: [src/capture/flow-onboarding.mjs](src/capture/flow-onboarding.mjs)
 
 `extractTestCasesFromSource()` uses regex to parse Playwright test names. This breaks for:
-- Multi-line `test(` definitions
-- Template literal test names `` test(`${name} flow`, ...) ``
-- Tests with comments inside the definition
-- `test.describe` / `test.step` nesting
-- Tests using `test.only` or `test.skip`
 
 Affected command: `uxl flows import-playwright`. Users with complex test files will get incomplete or incorrect flow suggestions.
 
----
 
 ### M-2: Git worktree not cleaned up on implementation failure
 
@@ -64,7 +58,6 @@ Affected command: `uxl flows import-playwright`. Users with complex test files w
 
 When `target: "worktree"` is set and a worktree is created, any subsequent failure in `runImplement()` leaves the worktree and branch dangling. No cleanup handler is registered. The user must manually run `git worktree remove` and `git branch -D` to recover.
 
----
 
 ### M-3: `flows map` overwrites existing mappings without confirmation
 
