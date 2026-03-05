@@ -4,7 +4,7 @@ import fs from "fs"
 import os from "os"
 import path from "path"
 
-import { runInit } from "../src/commands/init.mjs"
+import { runInit, splitCommand } from "../src/commands/init.mjs"
 import { loadRawConfig } from "../src/config/config-file.mjs"
 
 const EXPECTED_UXL_SCRIPTS = {
@@ -185,3 +185,20 @@ test("runInit reads existing playwright config for baseURL and webServer command
     }
   }
 })
+
+test("splitCommand handles nested quotes in -e scripts", () => {
+  const parsed = splitCommand("node -e \"console.log('hello')\"")
+  assert.deepEqual(parsed, {
+    command: "node",
+    args: ["-e", "console.log('hello')"],
+  })
+})
+
+test("splitCommand handles escaped quotes", () => {
+  const parsed = splitCommand('node -e "console.log(\\"hi\\")"')
+  assert.deepEqual(parsed, {
+    command: "node",
+    args: ["-e", 'console.log("hi")'],
+  })
+})
+

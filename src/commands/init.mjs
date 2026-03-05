@@ -117,15 +117,63 @@ function createDefaultPrompt() {
   }
 }
 
-function splitCommand(commandText) {
-  const parts = String(commandText || "")
-    .trim()
-    .match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g)
+export function splitCommand(commandText) {
+  const input = String(commandText || "").trim()
+  if (!input) return null
 
-  if (!parts || parts.length === 0) return null
+  const parts = []
+  let token = ""
+  let quote = null
+  let escaping = false
 
-  const normalized = parts.map((part) => part.replace(/^["']|["']$/g, ""))
-  const [command, ...args] = normalized
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i]
+
+    if (escaping) {
+      token += ch
+      escaping = false
+      continue
+    }
+
+    if (ch === "\\") {
+      escaping = true
+      continue
+    }
+
+    if (quote) {
+      if (ch === quote) {
+        quote = null
+      } else {
+        token += ch
+      }
+      continue
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      continue
+    }
+
+    if (/\s/.test(ch)) {
+      if (token) {
+        parts.push(token)
+        token = ""
+      }
+      continue
+    }
+
+    token += ch
+  }
+
+  if (escaping) {
+    token += "\\"
+  }
+  if (token) {
+    parts.push(token)
+  }
+  if (parts.length === 0) return null
+
+  const [command, ...args] = parts
   return { command, args }
 }
 

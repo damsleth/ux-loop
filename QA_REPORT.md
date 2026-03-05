@@ -45,14 +45,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🔵 Minor Issues
 
-### m-7: `init.mjs` command parsing regex doesn't handle escaped quotes
-
-**File**: [src/commands/init.mjs](src/commands/init.mjs)
-
-`splitCommand()` tokenizes the user's dev server command using a simple regex. It does not handle escaped quotes or nested quotes. A command like `node -e "console.log('hello')"` would be tokenized incorrectly. This is a minor UX issue limited to the `--start-command` init flow.
-
----
-
 ### m-8: `runInit` interactive readline has no timeout
 
 **File**: [src/commands/init.mjs](src/commands/init.mjs)
