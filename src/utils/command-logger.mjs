@@ -46,15 +46,16 @@ export function createCommandLogger({ scope, logsDir }) {
 
   const write = (level, message) => {
     const lines = toLines(message)
+    const fileLines = []
     for (const line of lines) {
       const now = new Date()
-      const fileLine = `[${formatFileTimestamp(now)}] [uxl:${scope}] ${line}`
+      fileLines.push(`[${formatFileTimestamp(now)}] [uxl:${scope}] ${line}`)
       const terminalLine = `[${formatTerminalTime(now)}] ${line}`
-      fs.appendFileSync(logPath, `${fileLine}\n`, "utf8")
       if (level === "error") console.error(terminalLine)
       else if (level === "warn") console.warn(terminalLine)
       else console.log(terminalLine)
     }
+    fs.appendFileSync(logPath, `${fileLines.join("\n")}\n`, "utf8")
   }
 
   write("log", `Logging to ${logPath}`)

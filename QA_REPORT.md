@@ -45,14 +45,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🔵 Minor Issues
 
-### m-2: `appendFileSync` called per log line in a hot loop
-
-**File**: [src/utils/command-logger.mjs](src/utils/command-logger.mjs#L53)
-
-Each call to `logger.log()` calls `fs.appendFileSync()` for every line of the message. During a review loop over many screenshot groups, this generates many synchronous file I/O calls. For large reviews this may be noticeably slow. Consider batching or using a write stream.
-
----
-
 ### m-3: Branch name timestamp contains colons on Windows
 
 **File**: [src/git/target-resolver.mjs](src/git/target-resolver.mjs)
