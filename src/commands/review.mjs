@@ -67,7 +67,8 @@ function startProgressAnimation(label) {
   return {
     stop(message) {
       clearInterval(timer)
-      process.stdout.write(`\r${message}\n`)
+      process.stdout.write("\r\x1b[2K")
+      process.stdout.write(`${message}\n`)
     },
   }
 }

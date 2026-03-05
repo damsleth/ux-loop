@@ -43,21 +43,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🟡 Major Issues
 
-### M-6: Progress animation leaves terminal in unknown state on error
-
-**File**: [src/commands/review.mjs](src/commands/review.mjs#L202-L204)
-
-```js
-} catch (error) {
-  progress.stop(`Review failed for group ...`)
-  throw error
-}
-```
-
-`progress.stop()` writes `\r<message>\n` to stdout. If the terminal isn't in TTY mode, `stop()` is a no-op (correct). But on TTY, if `error` is rethrown and the parent has its own logging, the `\r` written by `stop()` may corrupt the next line. The spinner clears the line but the newline flush behavior depends on terminal buffering.
-
----
-
 ### M-7: No integration tests
 
 The test suite covers unit-level validation, config schema, and mocked subprocess calls. There are no integration tests that exercise the full pipeline (`shots → review → implement`) even with mocked runners. Regressions in command wiring or config propagation would not be caught.

@@ -9,3 +9,4 @@
 - M-3: Added overwrite safety for `uxl flows map`: interactive confirmation by default and explicit `--force` override for non-interactive usage.
 - M-2: Added best-effort cleanup for failed worktree implementations (`git worktree remove --force` + `git branch -D`) to avoid dangling branches/worktrees.
 - M-1: Reworked Playwright test extraction to handle multiline `test(...)` calls, `test.only/skip/fixme`, and template-literal titles more robustly.
+- M-6: Updated review spinner stop behavior to clear the active line before printing final status, preventing carriage-return artifacts.
