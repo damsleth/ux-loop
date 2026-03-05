@@ -52,21 +52,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 Affected command: `uxl flows import-playwright`. Users with complex test files will get incomplete or incorrect flow suggestions.
 
 
-### M-2: Git worktree not cleaned up on implementation failure
-
-**File**: [src/git/target-resolver.mjs](src/git/target-resolver.mjs)
-
-When `target: "worktree"` is set and a worktree is created, any subsequent failure in `runImplement()` leaves the worktree and branch dangling. No cleanup handler is registered. The user must manually run `git worktree remove` and `git branch -D` to recover.
-
-
-### M-3: `flows map` overwrites existing mappings without confirmation
-
-**File**: [src/commands/flows.mjs](src/commands/flows.mjs)
-
-Running `uxl flows map` overwrites existing flow mappings silently. There is no confirmation prompt or `--force` flag pattern. Users who accidentally run this command lose their existing mappings with no undo.
-
----
-
 ### M-6: Progress animation leaves terminal in unknown state on error
 
 **File**: [src/commands/review.mjs](src/commands/review.mjs#L202-L204)

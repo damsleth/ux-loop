@@ -95,3 +95,23 @@ export function resolveTarget({ repoRoot, implementConfig, overrides = {} }) {
     summary: `Target: worktree ${worktreePath} on branch ${branchName}`,
   }
 }
+
+export function cleanupWorktreeTarget({ repoRoot, workDir, branchName }) {
+  const failures = []
+
+  try {
+    runCommand("git", ["worktree", "remove", "--force", workDir], { cwd: repoRoot })
+  } catch (error) {
+    failures.push(error instanceof Error ? error.message : String(error))
+  }
+
+  try {
+    runCommand("git", ["branch", "-D", branchName], { cwd: repoRoot })
+  } catch (error) {
+    failures.push(error instanceof Error ? error.message : String(error))
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`Failed to clean up worktree target: ${failures.join(" | ")}`)
+  }
+}

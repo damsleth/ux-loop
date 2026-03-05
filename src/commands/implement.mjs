@@ -1,7 +1,7 @@
 import fs from "fs"
 import path from "path"
 import { loadConfig } from "../config/load-config.mjs"
-import { resolveTarget } from "../git/target-resolver.mjs"
+import { cleanupWorktreeTarget, resolveTarget } from "../git/target-resolver.mjs"
 import { buildDefaultImplementPrompt } from "../prompts/default-implement-prompt.mjs"
 import { runCodexImplement } from "../runners/implement-codex.mjs"
 import { runCopilotImplement } from "../runners/implement-copilot.mjs"
@@ -97,27 +97,44 @@ export async function runImplement(args = [], cwd = process.cwd()) {
   const prompt = buildDefaultImplementPrompt(reportMarkdown)
   const model = overrides.model || config.implement.model
   const reasoningEffort = overrides.reasoningEffort || config.implement.reasoningEffort
+  const targetMode = overrides.target || config.implement.target
 
   console.log(prepared.summary)
-  if (runner === "copilot") {
-    runCopilotImplement({
-      copilotBin: config.implement.copilot.bin,
-      model,
-      workDir: prepared.workDir,
-      prompt,
-    })
-  } else {
-    runCodexImplement({
-      codexBin: config.implement.codex.bin,
-      model,
-      reasoningEffort,
-      workDir: prepared.workDir,
-      prompt,
-    })
+  try {
+    if (runner === "copilot") {
+      runCopilotImplement({
+        copilotBin: config.implement.copilot.bin,
+        model,
+        workDir: prepared.workDir,
+        prompt,
+      })
+    } else {
+      runCodexImplement({
+        codexBin: config.implement.codex.bin,
+        model,
+        reasoningEffort,
+        workDir: prepared.workDir,
+        prompt,
+      })
+    }
+  } catch (error) {
+    if (targetMode === "worktree") {
+      try {
+        cleanupWorktreeTarget({
+          repoRoot: config.paths.root,
+          workDir: prepared.workDir,
+          branchName: prepared.branchName,
+        })
+      } catch (cleanupError) {
+        const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+        console.warn(`Warning: ${message}`)
+      }
+    }
+    throw error
   }
 
   console.log("UX implementation run completed.")
-  if ((overrides.target || config.implement.target) === "worktree") {
+  if (targetMode === "worktree") {
     console.log(`Worktree path: ${prepared.workDir}`)
     console.log(`Branch: ${prepared.branchName}`)
   }
