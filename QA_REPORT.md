@@ -43,12 +43,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🟡 Major Issues
 
-### M-7: No integration tests
-
-The test suite covers unit-level validation, config schema, and mocked subprocess calls. There are no integration tests that exercise the full pipeline (`shots → review → implement`) even with mocked runners. Regressions in command wiring or config propagation would not be caught.
-
----
-
 ## 🔵 Minor Issues
 
 ### m-1: `REASONING_EFFORT_VALUES` is duplicated across two command files
