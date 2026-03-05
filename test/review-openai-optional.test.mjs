@@ -48,3 +48,47 @@ test("reviewWithOpenAi fails early when api key is missing", async () => {
     /OPENAI_API_KEY is not set/
   )
 })
+
+test("reviewWithOpenAi forwards configurable image detail", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-openai-detail-"))
+  const pngPath = path.join(tempDir, "shot.png")
+
+  fs.writeFileSync(
+    pngPath,
+    Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6360000002000154a24f5d0000000049454e44ae426082", "hex")
+  )
+
+  let capturedDetail = null
+
+  class FakeOpenAi {
+    constructor() {
+      this.chat = {
+        completions: {
+          create: async (payload) => {
+            const imageItem = payload.messages[1].content.find((item) => item.type === "image_url")
+            capturedDetail = imageItem.image_url.detail
+            return { choices: [{ message: { content: "- issue" } }] }
+          },
+        },
+      }
+    }
+  }
+
+  try {
+    const text = await reviewWithOpenAi({
+      apiKey: "test-key",
+      imageDetail: "low",
+      model: "gpt-5",
+      prompt: "Review",
+      label: "Sample",
+      filePaths: [pngPath],
+      openAiLoader: async () => FakeOpenAi,
+      logger: { log() {}, warn() {}, error() {} },
+    })
+
+    assert.equal(text, "- issue")
+    assert.equal(capturedDetail, "low")
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true })
+  }
+})

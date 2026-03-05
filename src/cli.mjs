@@ -14,7 +14,7 @@ Usage:
   uxl init [--preset=playwright-vite] [--force] [--non-interactive]
   uxl flows <list|add|map|check|import-playwright> [...flags]
   uxl shots
-  uxl review [--runner codex|copilot|openai] [--model <name>] [--reasoning-effort low|medium|high|extraHigh]
+  uxl review [--runner codex|copilot|openai] [--model <name>] [--reasoning-effort low|medium|high|extraHigh] [--image-detail low|auto|high]
   uxl implement [--target current|branch|worktree] [--branch <name>] [--worktree <path>] [--model <name>] [--reasoning-effort low|medium|high|extraHigh]
   uxl run [review/implement flags]
 `)

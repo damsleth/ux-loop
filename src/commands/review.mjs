@@ -18,8 +18,18 @@ export function parseReviewArgs(args) {
     else if (token === "--model") values.model = args[i + 1]
     if (token.startsWith("--reasoning-effort=")) values.reasoningEffort = token.slice("--reasoning-effort=".length)
     else if (token === "--reasoning-effort") values.reasoningEffort = args[i + 1]
+    if (token.startsWith("--image-detail=")) values.imageDetail = token.slice("--image-detail=".length)
+    else if (token === "--image-detail") values.imageDetail = args[i + 1]
   }
   return values
+}
+
+function validateImageDetail(value, sourceLabel) {
+  if (value === undefined) return
+  const allowed = ["low", "auto", "high"]
+  if (!allowed.includes(value)) {
+    throw new Error(`Invalid ${sourceLabel}: "${value}". Allowed: ${allowed.join(", ")}.`)
+  }
 }
 
 function readManifest(manifestPath) {
@@ -106,10 +116,12 @@ export async function runReview(args = [], cwd = process.cwd()) {
   const manifest = readManifest(config.paths.manifestPath)
   const logger = createCommandLogger({ scope: "review", logsDir: config.paths.logsDir })
   validateReasoningEffort(overrides.reasoningEffort, "--reasoning-effort")
+  validateImageDetail(overrides.imageDetail, "--image-detail")
 
   const runner = (overrides.runner || config.review.runner || "codex").toLowerCase()
   const model = overrides.model || config.review.model
   const reasoningEffort = overrides.reasoningEffort || config.review.reasoningEffort
+  const imageDetail = overrides.imageDetail || config.review.openai.imageDetail || "high"
   const prompt = config.review.systemPrompt || DEFAULT_REVIEW_PROMPT
   const reportOutputPath = resolveReportOutputPath(config.paths.reportPath)
 
@@ -134,6 +146,7 @@ export async function runReview(args = [], cwd = process.cwd()) {
   logger.log(`Runner: ${runner}`)
   logger.log(`Model: ${model || "default"}`)
   logger.log(`Reasoning effort: ${reasoningEffort || "default"}`)
+  logger.log(`Image detail: ${imageDetail}`)
   logger.log(`Screenshot groups: ${manifest.groups.length}`)
   logger.log(`System prompt:\n${prompt}`)
 
@@ -149,6 +162,7 @@ export async function runReview(args = [], cwd = process.cwd()) {
   report.push(runnerDescription)
   report.push(`Model: ${model || "default"}`)
   report.push(`Reasoning effort: ${reasoningEffort || "default"}`)
+  report.push(`Image detail: ${imageDetail}`)
   report.push("")
   let totalIssues = 0
 
@@ -185,6 +199,7 @@ export async function runReview(args = [], cwd = process.cwd()) {
               })
           : await reviewWithOpenAi({
               apiKey: process.env[config.review.openai.apiKeyEnv],
+              imageDetail,
               model,
               prompt,
               label: group.label,

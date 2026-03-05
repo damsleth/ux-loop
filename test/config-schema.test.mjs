@@ -52,6 +52,14 @@ test("normalizeConfig accepts reasoning effort values", () => {
   assert.equal(config.implement.reasoningEffort, "medium")
 })
 
+test("normalizeConfig accepts review.openai.imageDetail values", () => {
+  const config = normalizeConfig({
+    review: { openai: { imageDetail: "auto" } },
+  })
+
+  assert.equal(config.review.openai.imageDetail, "auto")
+})
+
 test("normalizeConfig validates reasoning effort enums", () => {
   assert.throws(
     () => normalizeConfig({ review: { reasoningEffort: "max" } }),
@@ -61,6 +69,11 @@ test("normalizeConfig validates reasoning effort enums", () => {
   assert.throws(
     () => normalizeConfig({ implement: { reasoningEffort: "max" } }),
     /Invalid implement\.reasoningEffort/
+  )
+
+  assert.throws(
+    () => normalizeConfig({ review: { openai: { imageDetail: "ultra" } } }),
+    /Invalid review\.openai\.imageDetail/
   )
 })
 

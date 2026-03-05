@@ -25,7 +25,7 @@ function extractText(response) {
   return response?.choices?.[0]?.message?.content?.trim() || ""
 }
 
-export async function reviewWithOpenAi({ apiKey, model, prompt, label, filePaths, openAiLoader, logger = console }) {
+export async function reviewWithOpenAi({ apiKey, imageDetail = "high", model, prompt, label, filePaths, openAiLoader, logger = console }) {
   const normalizedApiKey = typeof apiKey === "string" ? apiKey.trim() : ""
   if (!normalizedApiKey) {
     throw new Error("OPENAI_API_KEY is not set. Add it to your environment.")
@@ -45,7 +45,7 @@ export async function reviewWithOpenAi({ apiKey, model, prompt, label, filePaths
   for (const filePath of filePaths) {
     content.push({
       type: "image_url",
-      image_url: { url: getImageDataUrl(filePath), detail: "high" },
+      image_url: { url: getImageDataUrl(filePath), detail: imageDetail },
     })
   }
 

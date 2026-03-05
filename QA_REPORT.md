@@ -45,14 +45,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🔵 Minor Issues
 
-### m-5: `detail: "high"` is hardcoded in the OpenAI runner
-
-**File**: [src/runners/review-openai.mjs](src/runners/review-openai.mjs)
-
-The image detail level is hardcoded to `"high"` with no config option to change it. High detail significantly increases token usage and cost. Users on tight budgets or using low-res screenshots have no way to opt for `"low"` or `"auto"`.
-
----
-
 ### m-7: `init.mjs` command parsing regex doesn't handle escaped quotes
 
 **File**: [src/commands/init.mjs](src/commands/init.mjs)

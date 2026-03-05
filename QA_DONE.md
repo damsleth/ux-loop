@@ -17,3 +17,4 @@
 - m-3: Verified as already satisfied: `{timestamp}` in branch templating is pre-sanitized via `toISOString().replace(/[:.]/g, "-")`.
 - m-9: Verified as already fixed: `reviewWithCodex` already uses `try/finally` to remove its temp directory on both success and failure.
 - m-4: Expanded loopback probe aliases to cover `0.0.0.0` and generic `127.x.x.x` hosts in addition to localhost/IPv6 loopback.
+- m-5: Added configurable OpenAI image detail (`review.openai.imageDetail`) and `uxl review --image-detail low|auto|high`.

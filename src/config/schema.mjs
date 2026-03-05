@@ -42,6 +42,7 @@ const DEFAULTS = {
     },
     openai: {
       apiKeyEnv: "OPENAI_API_KEY",
+      imageDetail: "high",
     },
   },
   implement: {
@@ -212,6 +213,7 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
   validateEnum(merged.implement.target, ["current", "branch", "worktree"], "implement.target")
   validateOptionalEnum(merged.review.reasoningEffort, ["low", "medium", "high", "extraHigh"], "review.reasoningEffort")
   validateOptionalEnum(merged.implement.reasoningEffort, ["low", "medium", "high", "extraHigh"], "implement.reasoningEffort")
+  validateOptionalEnum(merged.review.openai.imageDetail, ["low", "auto", "high"], "review.openai.imageDetail")
 
   if (!isObject(merged.capture.onboarding)) {
     throw new Error(`capture.onboarding must be an object in ${configFilePath}.`)

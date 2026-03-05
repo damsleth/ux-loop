@@ -40,6 +40,11 @@ test("parseReviewArgs parses --reasoning-effort space-separated form", () => {
   assert.equal(parseReviewArgs(["--reasoning-effort", "medium"]).reasoningEffort, "medium")
 })
 
+test("parseReviewArgs parses --image-detail flags", () => {
+  assert.equal(parseReviewArgs(["--image-detail=auto"]).imageDetail, "auto")
+  assert.equal(parseReviewArgs(["--image-detail", "low"]).imageDetail, "low")
+})
+
 // --- parseImplementArgs ---
 
 test("parseImplementArgs returns empty object for no args", () => {
