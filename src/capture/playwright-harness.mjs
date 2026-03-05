@@ -246,7 +246,7 @@ function toAbsoluteUrl(baseUrl, maybeRelative) {
 
 // Handles stateful action types that share cross-action runtime state.
 // Falls through to applyAction for the basic (stateless) action types.
-async function applyStatefulAction(page, action, runtime, baseUrl) {
+export async function applyStatefulAction(page, action, runtime, baseUrl) {
   const type = action?.type
 
   if (type === "storeFirstLink") {

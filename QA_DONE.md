@@ -24,3 +24,4 @@
 - Coverage(resolveReportInputPath): Added tests for existing `report.md` precedence and timestamped fallback behavior.
 - Coverage(review-openai): Added tests for missing API key failure and configurable image detail forwarding.
 - Coverage(init.splitCommand): Added tests covering nested and escaped quote parsing.
+- Coverage(playwright-harness): Added tests for `applyStatefulAction` runtime state behavior.

@@ -49,7 +49,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 | Area | Gap |
 |------|-----|
-| `playwright-harness.mjs` | No test for `applyStatefulAction` or server startup/shutdown |
 | CLI routing | No test that unknown commands print help and exit non-zero |
 
 ---

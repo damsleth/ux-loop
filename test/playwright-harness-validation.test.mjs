@@ -2,6 +2,7 @@ import test from "node:test"
 import assert from "node:assert/strict"
 
 import {
+  applyStatefulAction,
   buildServerProbeUrls,
   createPlaywrightCaptureHarness,
   isServerReadyResponse,
@@ -113,4 +114,34 @@ test("isServerReadyResponse accepts non-5xx responses", () => {
 test("isServerReadyResponse rejects 5xx responses", () => {
   assert.equal(isServerReadyResponse({ status: 500 }), false)
   assert.equal(isServerReadyResponse({ status: 503 }), false)
+})
+
+test("applyStatefulAction storeFirstLink and gotoStored share runtime state", async () => {
+  const runtime = {}
+  const calls = []
+
+  const page = {
+    locator(selector) {
+      return {
+        first() {
+          return {
+            async getAttribute() {
+              return "/profile"
+            },
+          }
+        },
+      }
+    },
+    async goto(url) {
+      calls.push(url)
+    },
+    async waitForSelector() {},
+    async waitForTimeout() {},
+  }
+
+  await applyStatefulAction(page, { type: "storeFirstLink", selector: "a", storeAs: "next" }, runtime, "http://localhost:5173")
+  await applyStatefulAction(page, { type: "gotoStored", key: "next" }, runtime, "http://localhost:5173")
+
+  assert.equal(runtime.next, "http://localhost:5173/profile")
+  assert.deepEqual(calls, ["http://localhost:5173/profile"])
 })
