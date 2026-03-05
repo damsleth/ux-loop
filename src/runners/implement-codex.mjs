@@ -22,7 +22,7 @@ export function runCodexImplement({ codexBin, model, reasoningEffort, workDir, p
 
   args.push("-")
 
-  runCommand(codexBin, args, {
+  return runCommand(codexBin, args, {
     input: prompt,
     stdio: ["pipe", "inherit", "inherit"],
     maxBuffer: 10 * 1024 * 1024,

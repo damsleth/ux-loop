@@ -41,16 +41,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🔴 Critical Issues
 
-### C-2: Implement runners return no value — failures are silent
-
-**Files**: [src/runners/implement-codex.mjs](src/runners/implement-codex.mjs), [src/runners/implement-copilot.mjs](src/runners/implement-copilot.mjs)
-
-Both `runCodexImplement()` and `runCopilotImplement()` call `runCommandAsync()` or `runCommand()` but do not `return` the result or `await` a Promise (in the Copilot case). The caller in `implement.mjs` has no way to detect if the implementation succeeded or failed.
-
-The `runPipeline()` command in [src/commands/run.mjs](src/commands/run.mjs) assumes success if no exception is thrown. Codex and Copilot can exit with non-zero codes without throwing in the current setup.
-
----
-
 ### C-3: OpenAI API key not validated before use
 
 **File**: [src/runners/review-openai.mjs](src/runners/review-openai.mjs)

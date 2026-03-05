@@ -18,7 +18,7 @@ export function runCopilotImplement({ copilotBin, model, workDir, prompt }) {
     args.push("--model", model)
   }
 
-  runCommand(copilotBin, args, {
+  return runCommand(copilotBin, args, {
     stdio: ["pipe", "inherit", "inherit"],
     maxBuffer: 10 * 1024 * 1024,
     cwd: workDir,
