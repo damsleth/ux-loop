@@ -47,7 +47,7 @@ function readReport(reportPath) {
   return text
 }
 
-function resolveReportInputPath(reportPath) {
+export function resolveReportInputPath(reportPath) {
   if (!fs.existsSync(reportPath)) {
     if (path.basename(reportPath) !== "report.md") {
       throw new Error(`Report not found: ${reportPath}. Run \`uxl review\` first.`)
@@ -60,12 +60,7 @@ function resolveReportInputPath(reportPath) {
     return latestReportPath
   }
 
-  if (path.basename(reportPath) !== "report.md") {
-    return reportPath
-  }
-
-  const latestReportPath = findLatestTimestampedReport(path.dirname(reportPath))
-  return latestReportPath || reportPath
+  return reportPath
 }
 
 function findLatestTimestampedReport(reportDir) {

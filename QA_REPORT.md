@@ -74,14 +74,6 @@ Running `uxl flows map` overwrites existing flow mappings silently. There is no 
 
 ---
 
-### M-5: `resolveReportInputPath` logic is confusing and has an edge case
-
-**File**: [src/commands/implement.mjs](src/commands/implement.mjs#L50-L69)
-
-When `reportPath` exists AND is named `report.md`, the function still looks for a newer timestamped report and falls back to the original if none found. This means a fresh `report.md` may be silently overridden by an older timestamped file if one exists in the same directory from a prior run. The logic should prefer the file that actually exists over a discovery fallback.
-
----
-
 ### M-6: Progress animation leaves terminal in unknown state on error
 
 **File**: [src/commands/review.mjs](src/commands/review.mjs#L202-L204)
