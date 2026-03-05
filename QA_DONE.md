@@ -23,3 +23,4 @@
 - Coverage(runPipeline): Added integration-style tests for step sequencing and `stopOnError` behavior.
 - Coverage(resolveReportInputPath): Added tests for existing `report.md` precedence and timestamped fallback behavior.
 - Coverage(review-openai): Added tests for missing API key failure and configurable image detail forwarding.
+- Coverage(init.splitCommand): Added tests covering nested and escaped quote parsing.
