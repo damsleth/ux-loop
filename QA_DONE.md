@@ -22,3 +22,4 @@
 - m-8: Added interactive init prompt timeout (default 60s, runtime-overridable) with a clear timeout error.
 - Coverage(runPipeline): Added integration-style tests for step sequencing and `stopOnError` behavior.
 - Coverage(resolveReportInputPath): Added tests for existing `report.md` precedence and timestamped fallback behavior.
+- Coverage(review-openai): Added tests for missing API key failure and configurable image detail forwarding.
