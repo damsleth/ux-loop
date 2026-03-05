@@ -21,3 +21,4 @@
 - m-7: Replaced regex tokenization in `splitCommand()` with an escaped-quote-aware parser; added tests for nested and escaped quote cases.
 - m-8: Added interactive init prompt timeout (default 60s, runtime-overridable) with a clear timeout error.
 - Coverage(runPipeline): Added integration-style tests for step sequencing and `stopOnError` behavior.
+- Coverage(resolveReportInputPath): Added tests for existing `report.md` precedence and timestamped fallback behavior.
