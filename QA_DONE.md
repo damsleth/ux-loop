@@ -20,3 +20,4 @@
 - m-5: Added configurable OpenAI image detail (`review.openai.imageDetail`) and `uxl review --image-detail low|auto|high`.
 - m-7: Replaced regex tokenization in `splitCommand()` with an escaped-quote-aware parser; added tests for nested and escaped quote cases.
 - m-8: Added interactive init prompt timeout (default 60s, runtime-overridable) with a clear timeout error.
+- Coverage(runPipeline): Added integration-style tests for step sequencing and `stopOnError` behavior.

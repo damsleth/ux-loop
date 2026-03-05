@@ -49,7 +49,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 | Area | Gap |
 |------|-----|
-| `runPipeline` | No test for pipeline step sequencing or `stopOnError` behavior |
 | `resolveReportInputPath` | No test for the "exists but prefer timestamped" edge case |
 | `review-openai.mjs` | No test for missing API key or failed API call |
 | `playwright-harness.mjs` | No test for `applyStatefulAction` or server startup/shutdown |
