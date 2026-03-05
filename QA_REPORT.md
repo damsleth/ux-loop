@@ -41,19 +41,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🔴 Critical Issues
 
-### C-4: `countIssuesInCritique` returns 1 for non-empty unstructured text
-
-**File**: [src/commands/review.mjs](src/commands/review.mjs#L86-L88)
-
-```js
-if (bulletLines.length > 0) return bulletLines.length
-return 1  // fallback for any non-empty, non-"no issues" text
-```
-
-If a critique contains no bullet points but is non-empty (e.g., a paragraph response, an error message, a disclaimer), the issue count is reported as `1`. This inflates the reported issue count in log output and any downstream consumers of the report summary.
-
----
-
 ## 🟡 Major Issues
 
 ### M-1: Test case extraction regex is fragile

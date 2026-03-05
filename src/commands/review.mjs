@@ -72,7 +72,7 @@ function startProgressAnimation(label) {
   }
 }
 
-function countIssuesInCritique(text) {
+export function countIssuesInCritique(text) {
   const normalized = String(text || "").trim()
   if (!normalized) return 0
   if (/no issues found\.?/i.test(normalized)) return 0
@@ -84,7 +84,7 @@ function countIssuesInCritique(text) {
     .filter((line) => !/no issues found\.?/i.test(line))
 
   if (bulletLines.length > 0) return bulletLines.length
-  return 1
+  return 0
 }
 
 function pad2(value) {
