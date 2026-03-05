@@ -202,3 +202,29 @@ test("splitCommand handles escaped quotes", () => {
   })
 })
 
+test("runInit interactive prompt times out with clear error", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-init-timeout-"))
+  installUxlStub(cwd)
+
+  const never = async () => new Promise(() => {})
+
+  await assert.rejects(
+    () =>
+      runInit([], cwd, {
+        isInteractive: true,
+        detectPlaywrightInstalled: () => false,
+        buildFlowScaffold: () => ({
+          source: "route-scan",
+          files: [],
+          inventory: [{ id: "home", label: "Home", path: "/", required: true }],
+          flows: [{ name: "home", label: "Home", path: "/", screenshot: { fullPage: true } }],
+          flowMapping: { home: ["home"] },
+        }),
+        prompt: never,
+        promptTimeoutMs: 10,
+        logger: { log: () => {} },
+      }),
+    /Init prompt timed out/
+  )
+})
+

@@ -45,14 +45,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🔵 Minor Issues
 
-### m-8: `runInit` interactive readline has no timeout
-
-**File**: [src/commands/init.mjs](src/commands/init.mjs)
-
-The interactive init flow waits indefinitely for user input via `readline`. If run in a CI pipeline or non-interactive context without `--yes`, it will hang. The `--yes` flag handles the happy path, but an unexpected invocation in CI would stall the process with no timeout or detection.
-
----
-
 ## Coverage Gaps
 
 | Area | Gap |

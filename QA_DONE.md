@@ -19,3 +19,4 @@
 - m-4: Expanded loopback probe aliases to cover `0.0.0.0` and generic `127.x.x.x` hosts in addition to localhost/IPv6 loopback.
 - m-5: Added configurable OpenAI image detail (`review.openai.imageDetail`) and `uxl review --image-detail low|auto|high`.
 - m-7: Replaced regex tokenization in `splitCommand()` with an escaped-quote-aware parser; added tests for nested and escaped quote cases.
+- m-8: Added interactive init prompt timeout (default 60s, runtime-overridable) with a clear timeout error.

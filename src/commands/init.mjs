@@ -117,6 +117,20 @@ function createDefaultPrompt() {
   }
 }
 
+function withTimeout(promise, timeoutMs, timeoutMessage) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return promise
+  }
+
+  let timer
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs)
+    }),
+  ]).finally(() => clearTimeout(timer))
+}
+
 export function splitCommand(commandText) {
   const input = String(commandText || "").trim()
   if (!input) return null
@@ -190,12 +204,13 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
       : !nonInteractive && Boolean(process.stdin.isTTY)
 
   const configPath = path.join(cwd, "uxl.config.mjs")
+  const promptTimeoutMs = Number.isFinite(runtime.promptTimeoutMs) ? runtime.promptTimeoutMs : 60000
   let promptRuntime = runtime.prompt ? { ask: runtime.prompt, close: async () => {} } : null
   const ask = async (message) => {
     if (!promptRuntime) {
       promptRuntime = createDefaultPrompt()
     }
-    return promptRuntime.ask(message)
+    return withTimeout(promptRuntime.ask(message), promptTimeoutMs, `Init prompt timed out after ${promptTimeoutMs}ms.`)
   }
 
   try {
