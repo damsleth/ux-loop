@@ -47,9 +47,8 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## Coverage Gaps
 
-| Area | Gap |
-|------|-----|
-| CLI routing | No test that unknown commands print help and exit non-zero |
+All previously listed coverage gaps have been addressed.
+
 
 ---
 

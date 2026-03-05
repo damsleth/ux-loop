@@ -66,6 +66,7 @@ async function main() {
       return
     }
 
+    printHelp()
     throw new Error(`Unknown command: ${command}`)
   } catch (error) {
     console.error(error instanceof Error ? error.message : error)
