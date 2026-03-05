@@ -72,6 +72,7 @@ test("buildServerProbeUrls includes loopback aliases for localhost", () => {
     "http://localhost:5173/foo?x=1",
     "http://127.0.0.1:5173/foo?x=1",
     "http://[::1]:5173/foo?x=1",
+    "http://0.0.0.0:5173/foo?x=1",
   ])
 })
 
@@ -82,6 +83,19 @@ test("buildServerProbeUrls includes loopback aliases for 127.0.0.1", () => {
     "http://127.0.0.1:5173/",
     "http://localhost:5173/",
     "http://[::1]:5173/",
+    "http://0.0.0.0:5173/",
+  ])
+})
+
+test("buildServerProbeUrls treats any 127.x.x.x host as loopback", () => {
+  const urls = buildServerProbeUrls("http://127.0.0.2:5173/")
+
+  assert.deepEqual(urls, [
+    "http://127.0.0.2:5173/",
+    "http://localhost:5173/",
+    "http://127.0.0.1:5173/",
+    "http://[::1]:5173/",
+    "http://0.0.0.0:5173/",
   ])
 })
 

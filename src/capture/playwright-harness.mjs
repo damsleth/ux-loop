@@ -93,19 +93,16 @@ function buildServerProbeUrls(baseUrl) {
     return [baseUrl]
   }
 
-  const loopbackAliases = {
-    localhost: ["127.0.0.1", "[::1]"],
-    "127.0.0.1": ["localhost", "[::1]"],
-    "[::1]": ["localhost", "127.0.0.1"],
-  }
-
-  const aliases = loopbackAliases[parsed.hostname] || []
+  const hostname = parsed.hostname
+  const isIpv4Loopback = /^127(?:\.\d{1,3}){3}$/.test(hostname)
+  const isKnownLoopback = hostname === "localhost" || hostname === "0.0.0.0" || hostname === "::1" || isIpv4Loopback
+  const aliases = isKnownLoopback ? ["localhost", "127.0.0.1", "[::1]", "0.0.0.0"] : []
   const seen = new Set()
   const candidates = []
 
-  for (const hostname of [parsed.hostname, ...aliases]) {
+  for (const candidateHost of [hostname, ...aliases]) {
     const candidate = new URL(baseUrl)
-    candidate.hostname = hostname
+    candidate.hostname = candidateHost
     const href = candidate.toString()
     if (!seen.has(href)) {
       seen.add(href)

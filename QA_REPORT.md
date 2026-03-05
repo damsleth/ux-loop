@@ -45,14 +45,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🔵 Minor Issues
 
-### m-4: Loopback alias logic limited to three addresses
-
-**File**: [src/capture/playwright-harness.mjs](src/capture/playwright-harness.mjs)
-
-The server loopback alias detection only handles `localhost`, `127.0.0.1`, and `::1`. Apps binding to `0.0.0.0` or `127.0.0.2` (common in Docker or multi-service setups) will not have aliases built, potentially causing connectivity failures.
-
----
-
 ### m-5: `detail: "high"` is hardcoded in the OpenAI runner
 
 **File**: [src/runners/review-openai.mjs](src/runners/review-openai.mjs)
