@@ -14,3 +14,4 @@
 - m-1: Extracted reasoning effort values/validation into `src/utils/reasoning-effort.mjs` and reused it in both `review` and `implement` commands.
 - m-2: Reduced hot-loop logger I/O by batching each log call to a single `appendFileSync` write while preserving per-line timestamps.
 - m-6: Added per-scope log rotation in `.uxl/logs` to keep the latest 50 log files.
+- m-3: Verified as already satisfied: `{timestamp}` in branch templating is pre-sanitized via `toISOString().replace(/[:.]/g, "-")`.

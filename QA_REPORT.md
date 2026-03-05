@@ -45,14 +45,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🔵 Minor Issues
 
-### m-3: Branch name timestamp contains colons on Windows
-
-**File**: [src/git/target-resolver.mjs](src/git/target-resolver.mjs)
-
-The default `branchNameTemplate` uses `{timestamp}`, which is derived from `new Date().toISOString()`. ISO timestamps contain colons (`:`) which are invalid in Windows branch names and certain shell contexts. The `sanitizeBranchName()` function does strip colons, but the template variable `{timestamp}` is not pre-sanitized before substitution, making the sanitization implicit and order-dependent.
-
----
-
 ### m-4: Loopback alias logic limited to three addresses
 
 **File**: [src/capture/playwright-harness.mjs](src/capture/playwright-harness.mjs)
