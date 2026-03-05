@@ -41,16 +41,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🔴 Critical Issues
 
-### C-3: OpenAI API key not validated before use
-
-**File**: [src/runners/review-openai.mjs](src/runners/review-openai.mjs)
-
-The OpenAI runner receives `apiKey: process.env[config.review.openai.apiKeyEnv]`, but does not check whether the value is set before constructing the client. A missing key will produce an OpenAI SDK error deep in the API call stack, with no actionable message to the user.
-
-**Expected behavior**: Throw early with a clear message like `"OPENAI_API_KEY is not set. Add it to your environment."`.
-
----
-
 ### C-4: `countIssuesInCritique` returns 1 for non-empty unstructured text
 
 **File**: [src/commands/review.mjs](src/commands/review.mjs#L86-L88)

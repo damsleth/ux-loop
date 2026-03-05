@@ -34,3 +34,17 @@ test("reviewWithOpenAi reports clear install guidance when openai package is una
     fs.rmSync(tempDir, { recursive: true, force: true })
   }
 })
+
+test("reviewWithOpenAi fails early when api key is missing", async () => {
+  await assert.rejects(
+    () =>
+      reviewWithOpenAi({
+        apiKey: "",
+        model: "gpt-5",
+        prompt: "Review",
+        label: "Sample",
+        filePaths: [],
+      }),
+    /OPENAI_API_KEY is not set/
+  )
+})

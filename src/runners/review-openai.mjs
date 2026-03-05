@@ -26,6 +26,11 @@ function extractText(response) {
 }
 
 export async function reviewWithOpenAi({ apiKey, model, prompt, label, filePaths, openAiLoader, logger = console }) {
+  const normalizedApiKey = typeof apiKey === "string" ? apiKey.trim() : ""
+  if (!normalizedApiKey) {
+    throw new Error("OPENAI_API_KEY is not set. Add it to your environment.")
+  }
+
   for (const filePath of filePaths) {
     if (!fs.existsSync(filePath)) {
       throw new Error(`Missing screenshot: ${filePath}`)
@@ -35,7 +40,7 @@ export async function reviewWithOpenAi({ apiKey, model, prompt, label, filePaths
   logger?.log?.(`OpenAI review input for "${label}": ${filePaths.length} image(s)`)
 
   const OpenAI = await resolveOpenAiClientClass(openAiLoader)
-  const client = new OpenAI({ apiKey })
+  const client = new OpenAI({ apiKey: normalizedApiKey })
   const content = [{ type: "text", text: `Review this screenshot group: ${label}.` }]
   for (const filePath of filePaths) {
     content.push({
