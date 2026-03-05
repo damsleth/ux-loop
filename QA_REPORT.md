@@ -45,14 +45,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🔵 Minor Issues
 
-### m-1: `REASONING_EFFORT_VALUES` is duplicated across two command files
-
-**Files**: [src/commands/review.mjs:10](src/commands/review.mjs#L10), [src/commands/implement.mjs:10](src/commands/implement.mjs#L10)
-
-The same constant and validation function `validateReasoningEffort()` are independently defined in both files. If a new value (e.g., `"ultraHigh"`) is added, it must be updated in multiple places. Should be extracted to a shared utility.
-
----
-
 ### m-2: `appendFileSync` called per log line in a hot loop
 
 **File**: [src/utils/command-logger.mjs](src/utils/command-logger.mjs#L53)

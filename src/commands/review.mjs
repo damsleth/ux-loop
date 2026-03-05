@@ -6,8 +6,7 @@ import { assertCodexReady, reviewWithCodex } from "../runners/review-codex.mjs"
 import { assertCopilotReady, reviewWithCopilot } from "../runners/review-copilot.mjs"
 import { reviewWithOpenAi } from "../runners/review-openai.mjs"
 import { createCommandLogger } from "../utils/command-logger.mjs"
-
-const REASONING_EFFORT_VALUES = ["low", "medium", "high", "extraHigh"]
+import { validateReasoningEffort } from "../utils/reasoning-effort.mjs"
 
 export function parseReviewArgs(args) {
   const values = {}
@@ -21,13 +20,6 @@ export function parseReviewArgs(args) {
     else if (token === "--reasoning-effort") values.reasoningEffort = args[i + 1]
   }
   return values
-}
-
-function validateReasoningEffort(value, sourceLabel) {
-  if (value === undefined) return
-  if (!REASONING_EFFORT_VALUES.includes(value)) {
-    throw new Error(`Invalid ${sourceLabel}: "${value}". Allowed: ${REASONING_EFFORT_VALUES.join(", ")}.`)
-  }
 }
 
 function readManifest(manifestPath) {

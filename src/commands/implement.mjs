@@ -6,8 +6,7 @@ import { buildDefaultImplementPrompt } from "../prompts/default-implement-prompt
 import { runCodexImplement } from "../runners/implement-codex.mjs"
 import { runCopilotImplement } from "../runners/implement-copilot.mjs"
 import { assertCommandAvailable } from "../utils/process.mjs"
-
-const REASONING_EFFORT_VALUES = ["low", "medium", "high", "extraHigh"]
+import { validateReasoningEffort } from "../utils/reasoning-effort.mjs"
 
 export function parseImplementArgs(args) {
   const values = {}
@@ -25,13 +24,6 @@ export function parseImplementArgs(args) {
     else if (token === "--reasoning-effort") values.reasoningEffort = args[i + 1]
   }
   return values
-}
-
-function validateReasoningEffort(value, sourceLabel) {
-  if (value === undefined) return
-  if (!REASONING_EFFORT_VALUES.includes(value)) {
-    throw new Error(`Invalid ${sourceLabel}: "${value}". Allowed: ${REASONING_EFFORT_VALUES.join(", ")}.`)
-  }
 }
 
 function readReport(reportPath) {

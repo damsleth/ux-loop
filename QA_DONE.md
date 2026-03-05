@@ -11,3 +11,4 @@
 - M-1: Reworked Playwright test extraction to handle multiline `test(...)` calls, `test.only/skip/fixme`, and template-literal titles more robustly.
 - M-6: Updated review spinner stop behavior to clear the active line before printing final status, preventing carriage-return artifacts.
 - M-7: Added pipeline integration-style tests for step sequencing and `stopOnError` behavior, with dependency injection support in `runPipeline`.
+- m-1: Extracted reasoning effort values/validation into `src/utils/reasoning-effort.mjs` and reused it in both `review` and `implement` commands.
