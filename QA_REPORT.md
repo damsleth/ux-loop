@@ -60,7 +60,6 @@ All previously listed coverage gaps have been addressed.
 | No JSDoc | No type hints in IDE for exported functions |
 | Arg parsing | Custom per-command arg parsing; inconsistent (no short flags, no `=` in all parsers) |
 | Deep nesting | `normalizeConfig` in [src/config/schema.mjs](src/config/schema.mjs) has up to 8 levels of nesting |
-| Hardcoded constants | `REASONING_EFFORT_VALUES` duplicated; several magic strings inline |
 
 ---
 

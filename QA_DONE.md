@@ -26,3 +26,4 @@
 - Coverage(init.splitCommand): Added tests covering nested and escaped quote parsing.
 - Coverage(playwright-harness): Added tests for `applyStatefulAction` runtime state behavior.
 - Coverage(cli-routing): Added test ensuring unknown commands print help and exit non-zero.
+- CodeQuality(hardcoded constants): Removed duplicated reasoning-effort constants by extracting a shared utility.
