@@ -77,14 +77,6 @@ The interactive init flow waits indefinitely for user input via `readline`. If r
 
 ---
 
-### m-9: `review-codex.mjs` temp dir not cleaned up on error
-
-**File**: [src/runners/review-codex.mjs](src/runners/review-codex.mjs)
-
-The runner creates a temp directory with `fs.mkdtempSync()` for the prompt file. The cleanup logic runs at the end of the function, but if `runCommandAsync()` throws, the temp dir is not cleaned up. Should use `try/finally`.
-
----
-
 ## Coverage Gaps
 
 | Area | Gap |
