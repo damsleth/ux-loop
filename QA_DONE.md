@@ -13,3 +13,4 @@
 - M-7: Added pipeline integration-style tests for step sequencing and `stopOnError` behavior, with dependency injection support in `runPipeline`.
 - m-1: Extracted reasoning effort values/validation into `src/utils/reasoning-effort.mjs` and reused it in both `review` and `implement` commands.
 - m-2: Reduced hot-loop logger I/O by batching each log call to a single `appendFileSync` write while preserving per-line timestamps.
+- m-6: Added per-scope log rotation in `.uxl/logs` to keep the latest 50 log files.

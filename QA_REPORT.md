@@ -69,14 +69,6 @@ The image detail level is hardcoded to `"high"` with no config option to change 
 
 ---
 
-### m-6: No log rotation or max log size
-
-**File**: [src/utils/command-logger.mjs](src/utils/command-logger.mjs)
-
-Log files accumulate indefinitely in `.uxl/logs/` with no rotation, retention policy, or size cap. Projects with frequent runs will accumulate large numbers of log files without any cleanup mechanism.
-
----
-
 ### m-7: `init.mjs` command parsing regex doesn't handle escaped quotes
 
 **File**: [src/commands/init.mjs](src/commands/init.mjs)

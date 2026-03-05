@@ -42,3 +42,21 @@ test("createCommandLogger writes scoped logs to file", () => {
       console.error = originalError
     }
 })
+
+test("createCommandLogger rotates old scoped log files", () => {
+  const logsDir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-logger-rotate-"))
+
+  for (let i = 0; i < 55; i += 1) {
+    const suffix = String(i).padStart(2, "0")
+    const name = `review-2026-01-01T00-00-00-${suffix}.log`
+    fs.writeFileSync(path.join(logsDir, name), "old\n", "utf8")
+  }
+
+  createCommandLogger({ scope: "review", logsDir })
+
+  const remaining = fs
+    .readdirSync(logsDir)
+    .filter((entry) => entry.startsWith("review-") && entry.endsWith(".log"))
+
+  assert.ok(remaining.length <= 50)
+})

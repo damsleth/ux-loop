@@ -36,12 +36,25 @@ function formatFileTimestamp(date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}.${pad3(date.getMilliseconds())} ${formatTimezoneOffset(date)}`
 }
 
+function rotateScopeLogs(logsDir, scope, maxFiles = 50) {
+  const files = fs
+    .readdirSync(logsDir)
+    .filter((entry) => entry.startsWith(`${scope}-`) && entry.endsWith(".log"))
+    .sort()
+
+  const filesToDelete = files.slice(0, Math.max(0, files.length - maxFiles))
+  for (const filename of filesToDelete) {
+    fs.rmSync(path.join(logsDir, filename), { force: true })
+  }
+}
+
 export function createCommandLogger({ scope, logsDir }) {
   if (!scope || !logsDir) {
     throw new Error("createCommandLogger requires scope and logsDir.")
   }
 
   fs.mkdirSync(logsDir, { recursive: true })
+  rotateScopeLogs(logsDir, scope, 49)
   const logPath = path.join(logsDir, `${scope}-${nowIsoCompact()}.log`)
 
   const write = (level, message) => {
