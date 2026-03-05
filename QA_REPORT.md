@@ -43,15 +43,6 @@ Several issues were identified spanning correctness bugs, missing error handling
 
 ## 🟡 Major Issues
 
-### M-1: Test case extraction regex is fragile
-
-**File**: [src/capture/flow-onboarding.mjs](src/capture/flow-onboarding.mjs)
-
-`extractTestCasesFromSource()` uses regex to parse Playwright test names. This breaks for:
-
-Affected command: `uxl flows import-playwright`. Users with complex test files will get incomplete or incorrect flow suggestions.
-
-
 ### M-6: Progress animation leaves terminal in unknown state on error
 
 **File**: [src/commands/review.mjs](src/commands/review.mjs#L202-L204)

@@ -8,3 +8,4 @@
 - M-5: Changed `resolveReportInputPath` to prefer an existing explicit `report.md`, and only discover timestamped reports when `report.md` is missing (with direct tests).
 - M-3: Added overwrite safety for `uxl flows map`: interactive confirmation by default and explicit `--force` override for non-interactive usage.
 - M-2: Added best-effort cleanup for failed worktree implementations (`git worktree remove --force` + `git branch -D`) to avoid dangling branches/worktrees.
+- M-1: Reworked Playwright test extraction to handle multiline `test(...)` calls, `test.only/skip/fixme`, and template-literal titles more robustly.

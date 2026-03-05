@@ -105,17 +105,42 @@ function makeUniqueKey(baseKey, usedKeys) {
   return key
 }
 
-function extractTestCasesFromSource(sourceText, fallbackPrefix = "flow") {
+function decodeQuotedLiteral(literal) {
+  if (!literal || typeof literal !== "string") return ""
+  const quote = literal[0]
+  const endQuote = literal[literal.length - 1]
+  if ((quote !== "\"" && quote !== "'" && quote !== "`") || endQuote !== quote) {
+    return literal
+  }
+
+  const body = literal.slice(1, -1)
+  if (quote === "`") {
+    // Preserve template strings but normalize interpolations to a stable placeholder.
+    return body.replace(/\$\{[^}]*\}/g, "*")
+  }
+
+  return body
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\([\\"'])/g, "$1")
+}
+
+export function extractTestCasesFromSource(sourceText, fallbackPrefix = "flow") {
   const cases = []
   const usedIds = new Set()
 
-  const blockRegex = /test(?:\.(?:only|skip|fixme))?\(\s*(["'`])([^"'`]+)\1\s*,\s*(?:async\s*)?\([^)]*\)\s*=>\s*{([\s\S]*?)}\s*\)/g
-  let blockMatch
-  while ((blockMatch = blockRegex.exec(sourceText)) !== null) {
-    const title = blockMatch[2].trim()
-    const body = blockMatch[3]
-    const gotoMatch = body.match(/page\.goto\(\s*(["'`])([^"'`]+)\1/)
-    const routePath = normalizePathCandidate(gotoMatch ? gotoMatch[2] : "/")
+  const stringLiteral = "(?:\"(?:\\\\.|[^\\\"])*\"|'(?:\\\\.|[^\\'])*'|`(?:\\\\.|[^`])*`)"
+  const callRegex = new RegExp(`test(?:\\.(?:only|skip|fixme))?\\s*\\(\\s*(${stringLiteral})`, "gs")
+  const gotoRegex = new RegExp(`page\\.goto\\(\\s*(${stringLiteral})`, "s")
+
+  let callMatch
+  while ((callMatch = callRegex.exec(sourceText)) !== null) {
+    const titleLiteral = callMatch[1]
+    const title = decodeQuotedLiteral(titleLiteral).trim()
+    const snippet = sourceText.slice(callMatch.index, callMatch.index + 1200)
+    const gotoMatch = snippet.match(gotoRegex)
+    const routePath = normalizePathCandidate(decodeQuotedLiteral(gotoMatch?.[1] || ""))
     const id = makeUniqueKey(title || fallbackPrefix, usedIds)
 
     cases.push({
@@ -129,10 +154,10 @@ function extractTestCasesFromSource(sourceText, fallbackPrefix = "flow") {
     return cases
   }
 
-  const titleRegex = /test(?:\.(?:only|skip|fixme))?\(\s*(["'`])([^"'`]+)\1/g
+  const titleRegex = new RegExp(`test(?:\\.(?:only|skip|fixme))?\\s*\\(\\s*(${stringLiteral})`, "gs")
   let titleMatch
   while ((titleMatch = titleRegex.exec(sourceText)) !== null) {
-    const title = titleMatch[2].trim()
+    const title = decodeQuotedLiteral(titleMatch[1]).trim()
     const id = makeUniqueKey(title || fallbackPrefix, usedIds)
     cases.push({
       id,

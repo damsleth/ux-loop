@@ -4,6 +4,7 @@ import assert from "node:assert/strict"
 import {
   assertFullFlowCoverage,
   evaluateFlowCoverage,
+  extractTestCasesFromSource,
 } from "../src/capture/flow-onboarding.mjs"
 
 test("evaluateFlowCoverage reports complete coverage at 100%", () => {
@@ -54,4 +55,34 @@ test("assertFullFlowCoverage accepts complete mappings", () => {
   })
 
   assert.equal(report.complete, true)
+})
+
+test("extractTestCasesFromSource handles multiline test definitions", () => {
+  const source = `
+    test(
+      "Checkout flow",
+      async ({ page }) => {
+        await page.goto("/checkout")
+      }
+    )
+  `
+
+  const extracted = extractTestCasesFromSource(source, "fallback")
+  assert.equal(extracted.length, 1)
+  assert.equal(extracted[0].title, "Checkout flow")
+  assert.equal(extracted[0].path, "/checkout")
+})
+
+test("extractTestCasesFromSource supports template literal titles and test.only", () => {
+  const source = [
+    "const name = \"cart\"",
+    "test.only(\`${name} flow\`, async ({ page }) => {",
+    "  await page.goto('/cart')",
+    "})",
+  ].join("\n")
+
+  const extracted = extractTestCasesFromSource(source, "fallback")
+  assert.equal(extracted.length, 1)
+  assert.equal(extracted[0].title, "* flow")
+  assert.equal(extracted[0].path, "/cart")
 })
