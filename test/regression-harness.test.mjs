@@ -46,3 +46,56 @@ test("runPipeline regression harness emits a structured report shape with score 
   assert.equal(capturedReport.steps[0].step, "shots")
   assert.equal(capturedReport.steps[1].step, "review")
 })
+
+test("runPipeline returns partial when a non-critical step fails with stopOnError false", async () => {
+  const result = await runPipeline([], "/tmp/project", {
+    loadConfig: async () => ({
+      run: {
+        runShots: true,
+        runReview: true,
+        runImplement: true,
+        stopOnError: false,
+        maxIterations: 1,
+        scoreThreshold: 90,
+      },
+      implement: { scope: null },
+      paths: { reportsDir: "/tmp/project/.uxl/reports" },
+    }),
+    runShots: async () => { throw new Error("shots failed") },
+    runReview: async () => ({ status: "success", score: 72, totalIssues: 3, issues: null }),
+    runImplement: async () => ({ status: "success", diffStats: { filesChanged: 1, linesAdded: 2, linesRemoved: 0 } }),
+    errorLogger: () => {},
+    writeJsonArtifact: ({ payload }) => {
+      assert.equal(payload.status, "partial")
+      return "/tmp/project/.uxl/reports/report.json"
+    },
+  })
+
+  assert.equal(result.exitState, "partial")
+})
+
+test("runPipeline logs step errors through errorLogger when stopOnError is false", async () => {
+  const logged = []
+
+  await runPipeline([], "/tmp/project", {
+    loadConfig: async () => ({
+      run: {
+        runShots: false,
+        runReview: true,
+        runImplement: false,
+        stopOnError: false,
+        maxIterations: 1,
+        scoreThreshold: 90,
+      },
+      implement: { scope: null },
+      paths: { reportsDir: "/tmp/project/.uxl/reports" },
+    }),
+    runShots: async () => {},
+    runReview: async () => { throw new Error("review exploded") },
+    runImplement: async () => {},
+    errorLogger: (msg) => logged.push(msg),
+    writeJsonArtifact: () => "/tmp/project/.uxl/reports/report.json",
+  })
+
+  assert.ok(logged.some((entry) => String(entry).includes("review exploded")), "errorLogger must receive the step error message")
+})

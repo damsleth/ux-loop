@@ -20,7 +20,7 @@ Usage:
   uxl shots [--no-limits]
   uxl review [--runner codex|copilot|openai] [--model <name>] [--reasoning-effort low|medium|high|extraHigh] [--image-detail low|auto|high] [--prompt-file <path>] [--style <preset-or-file>] [--no-limits]
   uxl implement [--target current|branch|worktree] [--branch <name>] [--worktree <path>] [--scope css-only|text-only|layout-safe|unrestricted] [--model <name>] [--reasoning-effort low|medium|high|extraHigh] [--prompt-file <path>] [--style <preset-or-file>] [--strict] [--yes] [--dry-run] [--diff-only] [--no-limits]
-  uxl diff [implement flags]
+  uxl diff [implement flags]          (requires LLM runner; generates patch without applying)
   uxl apply [<patch-path>] [--commit]
   uxl rollback [--list] [--to <timestamp>] [--yes]
   uxl report [--left <report.json> --right <report.json>]

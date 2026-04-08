@@ -1,6 +1,6 @@
 import { loadConfig } from "../config/load-config.mjs"
-import { IMPLEMENT_OPTION_NAMES, runImplement } from "./implement.mjs"
-import { REVIEW_OPTION_NAMES, runReview } from "./review.mjs"
+import { IMPLEMENT_OPTION_NAMES, IMPLEMENT_VALUE_OPTIONS, runImplement } from "./implement.mjs"
+import { REVIEW_OPTION_NAMES, REVIEW_VALUE_OPTIONS, runReview } from "./review.mjs"
 import { SHOTS_OPTION_NAMES, runShots } from "./shots.mjs"
 import { writeJsonArtifact } from "../utils/artifacts.mjs"
 import path from "path"
@@ -38,11 +38,7 @@ function splitPipelineArgs(args) {
       throw new Error(`Unknown flag: --${key}`)
     }
 
-    const isBoolean =
-      SHOTS_OPTION_NAMES.has(key) || REVIEW_OPTION_NAMES.has(key) || IMPLEMENT_OPTION_NAMES.has(key)
-        ? !RUN_VALUE_OPTIONS.has(key) && !token.includes("=") && !args[i + 1]?.startsWith("--") && false
-        : false
-    const expectsValue = RUN_VALUE_OPTIONS.has(key) || ["runner", "model", "reasoning-effort", "image-detail", "target", "branch", "worktree", "scope", "prompt-file", "style"].includes(key)
+    const expectsValue = RUN_VALUE_OPTIONS.has(key) || REVIEW_VALUE_OPTIONS.has(key) || IMPLEMENT_VALUE_OPTIONS.has(key)
 
     if (RUN_VALUE_OPTIONS.has(key)) {
       const value = readFlagValue(args, i, key)
@@ -63,7 +59,6 @@ function splitPipelineArgs(args) {
     if (REVIEW_OPTION_NAMES.has(key)) reviewArgs.push(`--${key}`)
     if (IMPLEMENT_OPTION_NAMES.has(key)) implementArgs.push(`--${key}`)
     if (RUN_BOOLEAN_OPTIONS.has(key)) runOptions[key] = true
-    if (isBoolean) continue
   }
 
   return { shotsArgs, reviewArgs, implementArgs, runOptions }

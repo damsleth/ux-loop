@@ -52,8 +52,12 @@ export function listArtifactPaths(dir, matcher) {
   return fs
     .readdirSync(dir)
     .filter((entry) => matcher.test(entry))
-    .map((entry) => path.join(dir, entry))
-    .sort((left, right) => fs.statSync(right).mtimeMs - fs.statSync(left).mtimeMs)
+    .map((entry) => {
+      const filePath = path.join(dir, entry)
+      return { filePath, mtimeMs: fs.statSync(filePath).mtimeMs }
+    })
+    .sort((left, right) => right.mtimeMs - left.mtimeMs)
+    .map(({ filePath }) => filePath)
 }
 
 export function readLatestJsonArtifact(dir, matcher) {

@@ -70,6 +70,13 @@ export async function runRollback(args = [], cwd = process.cwd(), runtime = {}) 
     })
   } else if (snapshot.targetMode === "branch") {
     runSyncCommand("git", ["switch", snapshot.originalBranch], { cwd: snapshot.repoRoot, stdio: "inherit" })
+    if (snapshot.branchName) {
+      try {
+        runSyncCommand("git", ["branch", "-d", snapshot.branchName], { cwd: snapshot.repoRoot })
+      } catch {
+        console.warn(`Warning: could not delete branch ${snapshot.branchName} (may have unmerged changes or already be deleted).`)
+      }
+    }
   } else {
     runSyncCommand("git", ["reset", "--hard", snapshot.head], { cwd: snapshot.repoRoot, stdio: "inherit" })
     if (snapshot.stashRef) {

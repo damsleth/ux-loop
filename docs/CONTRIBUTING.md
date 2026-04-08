@@ -1,5 +1,3 @@
-
-
 # Contributing
 
 Keep it simple. This is a CLI tool, not a framework.

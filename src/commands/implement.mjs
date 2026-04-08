@@ -15,7 +15,7 @@ import { parseCliOptions } from "../utils/parse-cli-options.mjs"
 import { assertCommandAvailable, runCommand } from "../utils/process.mjs"
 import { validateReasoningEffort } from "../utils/reasoning-effort.mjs"
 
-const IMPLEMENT_VALUE_OPTIONS = new Set([
+export const IMPLEMENT_VALUE_OPTIONS = new Set([
   "target",
   "branch",
   "worktree",
@@ -192,7 +192,10 @@ async function confirmCurrentTarget({ targetExplicit, targetMode, isDirty, yes, 
   if (isDirty) {
     throw new Error("Current target has uncommitted changes. Re-run with --yes to proceed.")
   }
-  if (!targetExplicit) return
+  if (!targetExplicit) {
+    console.warn("Warning: applying changes directly to the current branch (configured via implement.target). Use --target worktree or set implement.target in config to isolate changes.")
+    return
+  }
   if (!process.stdin.isTTY && !promptRuntime) {
     throw new Error("Using --target current requires confirmation. Re-run with --yes to proceed.")
   }
@@ -495,7 +498,7 @@ export async function runImplement(args = [], cwd = process.cwd(), runtime = {})
   for (const message of [...scopeValidation.violations, ...scopeValidation.warnings]) {
     console.warn(message)
   }
-  if (overrides.strict && (scopeValidation.violations.length > 0 || scopeValidation.warnings.length > 0)) {
+  if (overrides.strict && scopeValidation.violations.length > 0) {
     throw new Error(`Scope validation failed for ${scope}.`)
   }
 

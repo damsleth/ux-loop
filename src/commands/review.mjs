@@ -12,7 +12,7 @@ import { parseCliOptions } from "../utils/parse-cli-options.mjs"
 import { validateReasoningEffort } from "../utils/reasoning-effort.mjs"
 import { buildReviewScoreSummary, computeReviewScore } from "../utils/review-score.mjs"
 
-const REVIEW_VALUE_OPTIONS = new Set(["runner", "model", "reasoning-effort", "image-detail", "prompt-file", "style"])
+export const REVIEW_VALUE_OPTIONS = new Set(["runner", "model", "reasoning-effort", "image-detail", "prompt-file", "style"])
 const REVIEW_BOOLEAN_OPTIONS = new Set(["no-limits"])
 
 export const REVIEW_OPTION_NAMES = new Set([...REVIEW_VALUE_OPTIONS, ...REVIEW_BOOLEAN_OPTIONS])

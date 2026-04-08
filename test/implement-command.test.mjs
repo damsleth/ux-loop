@@ -78,6 +78,116 @@ test("runImplement rejects invalid --target with enum-style error before any git
   )
 })
 
+test("runImplement dry-run does not invoke LLM runner", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-dryrun-"))
+  const reportPath = path.join(dir, "report.md")
+  fs.writeFileSync(reportPath, "# report", "utf8")
+
+  let runnerCalled = false
+
+  try {
+    const result = await runImplement(["--dry-run", "--yes"], dir, {
+      loadConfig: async () => ({
+        paths: { root: dir, reportPath },
+        implement: {
+          runner: "codex",
+          target: "current",
+          autoCommit: false,
+          timeoutMs: 1000,
+          codex: { bin: "codex" },
+          copilot: { bin: "copilot" },
+        },
+      }),
+      assertCommandAvailable: () => {},
+      previewTarget: () => ({ summary: "Target: current branch" }),
+      resolveTarget: () => ({ workDir: dir, branchName: null, summary: "Target: current branch" }),
+      runCodexImplement: () => { runnerCalled = true },
+      runCommand: () => ({ stdout: "" }),
+    })
+
+    assert.equal(runnerCalled, false, "LLM runner must not be invoked in dry-run mode")
+    assert.equal(result.dryRun, true)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("runImplement throws when target is current, worktree is dirty, and --yes is not passed", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-dirty-"))
+  const reportPath = path.join(dir, "report.md")
+  fs.writeFileSync(reportPath, "# report", "utf8")
+
+  try {
+    await assert.rejects(
+      () =>
+        runImplement(["--target", "current"], dir, {
+          loadConfig: async () => ({
+            paths: { root: dir, reportPath },
+            implement: {
+              runner: "codex",
+              target: "current",
+              autoCommit: false,
+              timeoutMs: 1000,
+              codex: { bin: "codex" },
+              copilot: { bin: "copilot" },
+            },
+          }),
+          assertCommandAvailable: () => {},
+          previewTarget: () => ({ summary: "Target: current branch" }),
+          resolveTarget: () => ({ workDir: dir, branchName: null, summary: "Target: current branch" }),
+          runCodexImplement: () => {},
+          runCommand: (_cmd, args) => {
+            if (args[0] === "status") return { stdout: " M src/app.js\n" }
+            return { stdout: "" }
+          },
+        }),
+      (err) => {
+        assert.ok(err instanceof Error)
+        assert.ok(err.message.toLowerCase().includes("uncommitted") || err.message.toLowerCase().includes("dirty"), `expected dirty-worktree error, got: ${err.message}`)
+        return true
+      }
+    )
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("runImplement fails hard when not inside a git repo", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-nogit-"))
+  const reportPath = path.join(dir, "report.md")
+  fs.writeFileSync(reportPath, "# report", "utf8")
+
+  try {
+    await assert.rejects(
+      () =>
+        runImplement([], dir, {
+          loadConfig: async () => ({
+            paths: { root: dir, reportPath },
+            implement: {
+              runner: "codex",
+              target: "worktree",
+              autoCommit: false,
+              timeoutMs: 1000,
+              codex: { bin: "codex" },
+              copilot: { bin: "copilot" },
+            },
+          }),
+          assertCommandAvailable: () => {},
+          runCommand: (_cmd, args) => {
+            if (args[0] === "rev-parse") throw new Error("not a git repository")
+            return { stdout: "" }
+          },
+        }),
+      (err) => {
+        assert.ok(err instanceof Error)
+        return true
+      }
+    )
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test("runImplement auto-commits when enabled", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-implement-auto-commit-"))
   const reportPath = path.join(dir, "report.md")
