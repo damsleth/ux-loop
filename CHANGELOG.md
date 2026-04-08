@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.1 - 2026-04-08
+
+- Added CLI argument parsing and timeout support for `uxl review` and `uxl implement`.
+- Added configurable OpenAI image detail handling for visual reviews.
+- Improved capture server readiness detection with broader loopback alias probing.
+- Fixed custom capture runner coverage gating so non-Playwright adapters can pass the required-flow checks.
+- Fixed invalid `uxl implement --target` values to fail safely instead of falling through into worktree creation.
+- Fixed route discovery during onboarding to cover common Next.js layouts, including `pages/` and `src/app/`.
+- Fixed `uxl flows map` so empty mapping targets are rejected instead of writing invalid config.
+- Fixed Codex review path handling for screenshot filenames that contain commas.
+- Improved implement failure handling and worktree cleanup behavior.
+- Improved review/report handling with better report path precedence and critique issue counting.
+- Improved config loading and init behavior, including clearer config import errors, safer interactive prompt timeouts, and more robust command tokenization.
+- Improved Playwright test extraction and capture progress terminal cleanup.
+- Improved command logging with shared reasoning-effort validation, sync write batching, and log rotation retention.
+- Expanded automated coverage across CLI routing, flow commands, pipeline behavior, OpenAI review, report resolution, init helpers, stateful Playwright actions, and the backlog bug-fix regressions.
+- Added repository workflow documentation in `AGENTS.md` covering local-only `.plans/`, `.plans/TODO.md`, version bump expectations, and changelog maintenance.
+
 ## 1.1.0 - 2026-02-25
 
 - Added strict full-flow coverage gate for `uxl shots` and `uxl run`.

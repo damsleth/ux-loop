@@ -93,6 +93,7 @@ If the work is only partially complete:
 - Do not bundle multiple finished plans into one commit unless the work is tightly coupled.
 - When pushing a meaningful user-visible or behavior-changing update, increment the package version.
 - Default to a patch bump unless the user specifies a different version change.
+- Update `CHANGELOG.md` for any meaningful change before pushing or handing off the work.
 
 ## Communication
 
