@@ -1,4 +1,5 @@
 import readline from "node:readline/promises"
+import { createPlaywrightFlowValidator } from "../capture/playwright-harness.mjs"
 import {
   buildCoverageErrorMessage,
   evaluateFlowCoverage,
@@ -6,6 +7,7 @@ import {
   mergeImportedSuggestions,
   slugify,
 } from "../capture/flow-onboarding.mjs"
+import { loadConfig } from "../config/load-config.mjs"
 import { loadRawConfig, writeConfigFile } from "../config/config-file.mjs"
 import { normalizeConfig } from "../config/schema.mjs"
 
@@ -253,6 +255,48 @@ async function runCheck(cwd) {
   }
 }
 
+async function runValidate(cwd) {
+  const config = await loadConfig(cwd)
+  if (config.capture.runner !== "playwright") {
+    throw new Error("flows validate is only available for capture.runner=playwright.")
+  }
+
+  const playwrightConfig = config.capture.playwright || {}
+  const validateFlows = createPlaywrightFlowValidator({
+    baseUrl: config.capture.baseUrl,
+    timeoutMs: config.capture.timeoutMs,
+    startCommand: playwrightConfig.startCommand,
+    devices: playwrightConfig.devices,
+    flows: playwrightConfig.flows,
+    launch: playwrightConfig.launch,
+    env: playwrightConfig.env,
+    actionRetries: playwrightConfig.actionRetries,
+    actionRetryBackoffMs: playwrightConfig.actionRetryBackoffMs,
+    screenshotWaitUntil: playwrightConfig.screenshotWaitUntil,
+    stabilizationDelayMs: playwrightConfig.stabilizationDelayMs,
+    maxResolution: config.limits.maxResolution,
+  })
+
+  const results = await validateFlows({
+    rootDir: config.paths.root,
+    shotsDir: config.paths.shotsDir,
+    baseUrl: config.capture.baseUrl,
+    env: { ...process.env, ...(config.capture.env || {}) },
+    timeoutMs: config.capture.timeoutMs,
+    logger: console,
+  })
+
+  const failures = results.filter((entry) => entry.status === "failed")
+  for (const result of results) {
+    const suffix = result.status === "ok" ? "ok" : `failed: ${result.error}`
+    console.log(`${result.flow}\t${result.device}\t${suffix}`)
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`Flow validation failed for ${failures.length} flow/device combination(s).`)
+  }
+}
+
 function createPrompt() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
   return {
@@ -317,7 +361,7 @@ export async function runFlows(args = [], cwd = process.cwd(), runtime = {}) {
   const [subcommand] = parsed._
 
   if (!subcommand) {
-    throw new Error("Missing flows subcommand. Use: list, add, map, check, import-playwright.")
+    throw new Error("Missing flows subcommand. Use: list, add, map, check, validate, import-playwright.")
   }
 
   if (subcommand === "list") {
@@ -337,6 +381,11 @@ export async function runFlows(args = [], cwd = process.cwd(), runtime = {}) {
 
   if (subcommand === "check") {
     await runCheck(cwd)
+    return
+  }
+
+  if (subcommand === "validate") {
+    await runValidate(cwd)
     return
   }
 

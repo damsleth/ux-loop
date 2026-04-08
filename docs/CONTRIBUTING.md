@@ -31,6 +31,9 @@ Run tests:
 npm test
 ```
 
+Architecture notes live in `docs/ARCHITECTURE.md`.
+Testing strategy notes live in `docs/TESTING.md`.
+
 ---
 
 ## Development workflow

@@ -86,7 +86,7 @@ test("runImplement auto-commits when enabled", async () => {
   const commands = []
 
   try {
-    await runImplement([], dir, {
+    await runImplement(["--yes"], dir, {
       loadConfig: async () => ({
         paths: { root: dir, reportPath },
         implement: {
@@ -109,12 +109,14 @@ test("runImplement auto-commits when enabled", async () => {
       },
     })
 
-    assert.deepEqual(commands, [
+    assert.deepEqual(commands.slice(-4), [
       "git status --porcelain",
       "git add -A",
       "git diff --cached --name-only",
       "git commit -m chore: apply ux loop improvements",
     ])
+    assert.ok(commands.includes("git rev-parse --is-inside-work-tree"))
+    assert.ok(commands.some((entry) => entry.startsWith("git rev-parse HEAD")))
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }

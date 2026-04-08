@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.2 - 2026-04-08
+
+- Added scoped implement modes via `--scope` / `implement.scope`, plus diff-based scope validation for safer code edits.
+- Added structured review severity markers, deterministic scoring, style presets, prompt-file overrides, and prompt token guardrails.
+- Added iterative `uxl run` control with score-based stop conditions, explicit pipeline states, and structured JSON reports.
+- Added git safety features including current-branch confirmation, dirty-worktree handling, `--dry-run`, diff-first patch generation, rollback snapshots, and `uxl diff|apply|rollback|report`.
+- Improved Playwright reliability with action retries, timeout overrides, screenshot stabilization, viewport clamping, selector validation via `uxl flows validate`, and screenshot/resource limits.
+- Added architecture/testing docs, golden scoring fixtures, a static test app, a regression harness test, and broader prompt/scope coverage.
+
 ## 1.1.1 - 2026-04-08
 
 - Added CLI argument parsing and timeout support for `uxl review` and `uxl implement`.

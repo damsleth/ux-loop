@@ -13,6 +13,10 @@ const EXPECTED_UXL_SCRIPTS = {
   "uxl:shots": "uxl shots",
   "uxl:review": "uxl review",
   "uxl:implement": "uxl implement",
+  "uxl:diff": "uxl diff",
+  "uxl:apply": "uxl apply",
+  "uxl:rollback": "uxl rollback",
+  "uxl:report": "uxl report",
   "uxl:run": "uxl run",
 }
 
@@ -227,4 +231,3 @@ test("runInit interactive prompt times out with clear error", async () => {
     /Init prompt timed out/
   )
 })
-

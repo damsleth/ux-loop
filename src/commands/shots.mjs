@@ -1,9 +1,25 @@
 import fs from "fs"
 import { assertFullFlowCoverage } from "../capture/flow-onboarding.mjs"
+import { createPlaywrightCaptureHarness } from "../capture/playwright-harness.mjs"
 import { loadConfig } from "../config/load-config.mjs"
 import { writeManifest } from "../manifest/write-manifest.mjs"
-import { createPlaywrightCaptureHarness } from "../capture/playwright-harness.mjs"
+import { writeJsonArtifact } from "../utils/artifacts.mjs"
 import { createCommandLogger } from "../utils/command-logger.mjs"
+import { parseCliOptions } from "../utils/parse-cli-options.mjs"
+
+const SHOTS_BOOLEAN_OPTIONS = new Set(["no-limits"])
+
+export const SHOTS_OPTION_NAMES = new Set(SHOTS_BOOLEAN_OPTIONS)
+
+function parseShotsArgs(args) {
+  const parsed = parseCliOptions(args, {
+    valueOptions: [],
+    booleanOptions: SHOTS_BOOLEAN_OPTIONS,
+  })
+  return {
+    noLimits: parsed["no-limits"] === true,
+  }
+}
 
 function resolveCaptureExport(moduleExports) {
   if (typeof moduleExports.captureUx === "function") return moduleExports.captureUx
@@ -21,14 +37,17 @@ function ensureFilesExist(groups) {
   }
 }
 
-export async function runShots(args = [], cwd = process.cwd(), runtime = {}) {
-  if (args.length > 0) {
-    throw new Error(`uxl shots does not accept arguments: ${args.join(" ")}`)
-  }
+function countScreenshots(groups) {
+  return groups.reduce((total, group) => total + group.files.length, 0)
+}
 
+export async function runShots(args = [], cwd = process.cwd(), runtime = {}) {
+  const startedAt = Date.now()
+  const overrides = parseShotsArgs(args)
   const load = runtime.loadConfig || loadConfig
   const loggerFactory = runtime.createCommandLogger || createCommandLogger
   const harnessFactory = runtime.createPlaywrightCaptureHarness || createPlaywrightCaptureHarness
+  const writeArtifact = runtime.writeJsonArtifact || writeJsonArtifact
   const config = await load(cwd)
 
   assertFullFlowCoverage(config)
@@ -61,6 +80,12 @@ export async function runShots(args = [], cwd = process.cwd(), runtime = {}) {
           flows: playwrightConfig.flows,
           launch: playwrightConfig.launch,
           env: playwrightConfig.env,
+          actionRetries: playwrightConfig.actionRetries,
+          actionRetryBackoffMs: playwrightConfig.actionRetryBackoffMs,
+          screenshotWaitUntil: playwrightConfig.screenshotWaitUntil,
+          stabilizationDelayMs: playwrightConfig.stabilizationDelayMs,
+          maxScreenshots: overrides.noLimits ? undefined : config.limits?.maxScreenshots,
+          maxResolution: overrides.noLimits ? undefined : config.limits?.maxResolution,
         })
       }
     } else {
@@ -83,8 +108,38 @@ export async function runShots(args = [], cwd = process.cwd(), runtime = {}) {
 
     ensureFilesExist(groups)
     const manifest = writeManifest(config.paths.manifestPath, groups)
+    const screenshotCount = countScreenshots(manifest.groups)
+    const reportJsonPath = writeArtifact({
+      dir: config.paths.reportsDir || `${config.paths.root}/.uxl/reports`,
+      prefix: "uxl_report",
+      payload: {
+        timestamp: new Date().toISOString(),
+        command: "shots",
+        status: "success",
+        duration_ms: Date.now() - startedAt,
+        model: null,
+        scope: null,
+        iteration: 1,
+        steps: [
+          {
+            step: "shots",
+            duration_ms: Date.now() - startedAt,
+            screenshots: screenshotCount,
+            groups: manifest.groups.length,
+          },
+        ],
+      },
+    })
     logger.log(`Manifest written: ${config.paths.manifestPath} (${manifest.groups.length} groups)`)
+    logger.log(`Structured report written: ${reportJsonPath}`)
     console.log(`Capture complete. Manifest: ${config.paths.manifestPath}`)
+    return {
+      status: "success",
+      manifestPath: config.paths.manifestPath,
+      reportJsonPath,
+      screenshots: screenshotCount,
+      groups: manifest.groups.length,
+    }
   } catch (error) {
     logger.error(error instanceof Error ? error.message : String(error))
     throw error

@@ -14,6 +14,10 @@ const DEFAULT_PACKAGE_SCRIPTS = {
   "uxl:shots": "uxl shots",
   "uxl:review": "uxl review",
   "uxl:implement": "uxl implement",
+  "uxl:diff": "uxl diff",
+  "uxl:apply": "uxl apply",
+  "uxl:rollback": "uxl rollback",
+  "uxl:report": "uxl report",
   "uxl:run": "uxl run",
 }
 
@@ -86,6 +90,28 @@ function ensurePackageScripts(cwd) {
     packageJsonCreated,
     scriptsAdded,
   }
+}
+
+function ensureGitignoreEntries(cwd) {
+  const gitignorePath = path.join(cwd, ".gitignore")
+  const requiredEntries = [".uxl/diffs/", ".uxl/snapshots/", ".uxl/reports/"]
+  const existing = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf8") : ""
+  const lines = existing.split(/\r?\n/).filter(Boolean)
+  let updated = existing
+  const added = []
+
+  for (const entry of requiredEntries) {
+    if (!lines.includes(entry)) {
+      updated = `${updated}${updated.endsWith("\n") || !updated ? "" : "\n"}${entry}\n`
+      added.push(entry)
+    }
+  }
+
+  if (added.length > 0 || !fs.existsSync(gitignorePath)) {
+    fs.writeFileSync(gitignorePath, updated, "utf8")
+  }
+
+  return added
 }
 
 function serializeConfig(config, baseUrlFallback = "http://127.0.0.1:5173") {
@@ -310,8 +336,12 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
 
     writeFileGuarded(configPath, serializeConfig(configObject, configuredBaseUrl), force)
     const packageScripts = ensurePackageScripts(cwd)
+    const gitignoreEntriesAdded = ensureGitignoreEntries(cwd)
     if (packageScripts.scriptsAdded.length > 0) {
       logger.log(`Added package scripts: ${packageScripts.scriptsAdded.join(", ")}`)
+    }
+    if (gitignoreEntriesAdded.length > 0) {
+      logger.log(`Updated .gitignore: ${gitignoreEntriesAdded.join(", ")}`)
     }
 
     return {
@@ -320,6 +350,7 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
       playwrightInstalled,
       warnings,
       packageScripts,
+      gitignoreEntriesAdded,
     }
   } finally {
     if (promptRuntime) {

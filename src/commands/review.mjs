@@ -1,60 +1,35 @@
 import fs from "fs"
 import path from "path"
 import { loadConfig } from "../config/load-config.mjs"
-import { DEFAULT_REVIEW_PROMPT } from "../prompts/default-review-prompt.mjs"
+import { buildDefaultReviewPrompt } from "../prompts/default-review-prompt.mjs"
+import { loadStylePreset } from "../prompts/load-style-preset.mjs"
 import { assertCodexReady, reviewWithCodex } from "../runners/review-codex.mjs"
 import { assertCopilotReady, reviewWithCopilot } from "../runners/review-copilot.mjs"
 import { reviewWithOpenAi } from "../runners/review-openai.mjs"
+import { writeJsonArtifact } from "../utils/artifacts.mjs"
 import { createCommandLogger } from "../utils/command-logger.mjs"
+import { parseCliOptions } from "../utils/parse-cli-options.mjs"
 import { validateReasoningEffort } from "../utils/reasoning-effort.mjs"
+import { buildReviewScoreSummary, computeReviewScore } from "../utils/review-score.mjs"
 
-export const REVIEW_OPTION_NAMES = new Set(["runner", "model", "reasoning-effort", "image-detail"])
+const REVIEW_VALUE_OPTIONS = new Set(["runner", "model", "reasoning-effort", "image-detail", "prompt-file", "style"])
+const REVIEW_BOOLEAN_OPTIONS = new Set(["no-limits"])
 
-function parseOptionArgs(args, allowedOptions) {
-  const values = {}
-  for (let i = 0; i < args.length; i += 1) {
-    const token = args[i]
-    if (!token.startsWith("--")) {
-      throw new Error(`Unexpected positional argument: ${token}`)
-    }
-
-    if (token.includes("=")) {
-      const [rawKey, ...rest] = token.slice(2).split("=")
-      if (!allowedOptions.has(rawKey)) {
-        throw new Error(`Unknown flag: --${rawKey}`)
-      }
-      const value = rest.join("=")
-      if (!value) {
-        throw new Error(`Missing value for --${rawKey}`)
-      }
-      values[rawKey] = value
-      continue
-    }
-
-    const key = token.slice(2)
-    if (!allowedOptions.has(key)) {
-      throw new Error(`Unknown flag: --${key}`)
-    }
-
-    const next = args[i + 1]
-    if (!next || next.startsWith("--")) {
-      throw new Error(`Missing value for --${key}`)
-    }
-
-    values[key] = next
-    i += 1
-  }
-
-  return values
-}
+export const REVIEW_OPTION_NAMES = new Set([...REVIEW_VALUE_OPTIONS, ...REVIEW_BOOLEAN_OPTIONS])
 
 export function parseReviewArgs(args) {
-  const parsed = parseOptionArgs(args, REVIEW_OPTION_NAMES)
+  const parsed = parseCliOptions(args, {
+    valueOptions: REVIEW_VALUE_OPTIONS,
+    booleanOptions: REVIEW_BOOLEAN_OPTIONS,
+  })
   const values = {}
   if (parsed.runner !== undefined) values.runner = parsed.runner
   if (parsed.model !== undefined) values.model = parsed.model
   if (parsed["reasoning-effort"] !== undefined) values.reasoningEffort = parsed["reasoning-effort"]
   if (parsed["image-detail"] !== undefined) values.imageDetail = parsed["image-detail"]
+  if (parsed["prompt-file"] !== undefined) values.promptFile = parsed["prompt-file"]
+  if (parsed.style !== undefined) values.style = parsed.style
+  if (parsed["no-limits"] !== undefined) values.noLimits = parsed["no-limits"]
   return values
 }
 
@@ -110,18 +85,7 @@ function startProgressAnimation(label) {
 }
 
 export function countIssuesInCritique(text) {
-  const normalized = String(text || "").trim()
-  if (!normalized) return 0
-  if (/no issues found\.?/i.test(normalized)) return 0
-
-  const bulletLines = normalized
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => /^[-*]\s+/.test(line) || /^\d+\.\s+/.test(line))
-    .filter((line) => !/no issues found\.?/i.test(line))
-
-  if (bulletLines.length > 0) return bulletLines.length
-  return 0
+  return buildReviewScoreSummary(text).totalIssues
 }
 
 function pad2(value) {
@@ -150,13 +114,25 @@ export function resolveReportOutputPath(configuredReportPath, date = new Date())
   return path.join(path.dirname(configuredReportPath), buildTimestampedReportName(date))
 }
 
+function sumIssueCounts(left, right) {
+  return {
+    critical: (left?.critical || 0) + (right?.critical || 0),
+    major: (left?.major || 0) + (right?.major || 0),
+    minor: (left?.minor || 0) + (right?.minor || 0),
+  }
+}
+
 export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
+  const startedAt = Date.now()
   const overrides = parseReviewArgs(args)
   const load = runtime.loadConfig || loadConfig
   const runCodexReview = runtime.reviewWithCodex || reviewWithCodex
   const runCopilotReview = runtime.reviewWithCopilot || reviewWithCopilot
   const runOpenAiReview = runtime.reviewWithOpenAi || reviewWithOpenAi
   const loggerFactory = runtime.createCommandLogger || createCommandLogger
+  const loadPreset = runtime.loadStylePreset || loadStylePreset
+  const writeArtifact = runtime.writeJsonArtifact || writeJsonArtifact
+  const readFile = runtime.readFileSync || fs.readFileSync
   const config = await load(cwd)
   const manifest = readManifest(config.paths.manifestPath)
   const logger = loggerFactory({
@@ -171,8 +147,11 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
   const model = overrides.model || config.review.model
   const reasoningEffort = overrides.reasoningEffort || config.review.reasoningEffort
   const imageDetail = overrides.imageDetail || config.review.openai.imageDetail || "high"
-  const prompt = config.review.systemPrompt || DEFAULT_REVIEW_PROMPT
   const reportOutputPath = resolveReportOutputPath(config.paths.reportPath)
+  const maxReviewGroups = config.limits?.maxReviewGroups || manifest.groups.length
+  const maxGroups = overrides.noLimits ? manifest.groups.length : Math.min(manifest.groups.length, maxReviewGroups)
+  const style = overrides.style || config.style
+  let prompt
 
   if (!["codex", "copilot", "openai"].includes(runner)) {
     throw new Error(`Invalid review runner: "${runner}". Allowed: codex, copilot, openai.`)
@@ -189,6 +168,24 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
     assertCopilotReady(config.review.copilot.bin)
   }
 
+  if (overrides.promptFile) {
+    const promptPath = path.resolve(config.paths.root, overrides.promptFile)
+    if (!fs.existsSync(promptPath)) {
+      throw new Error(`Prompt file not found: ${promptPath}`)
+    }
+    prompt = readFile(promptPath, "utf8").trim()
+  } else if (config.review.systemPrompt) {
+    prompt = config.review.systemPrompt
+  } else {
+    prompt = buildDefaultReviewPrompt({
+      style: await loadPreset(style, config.paths.root),
+      maxPromptTokens: overrides.noLimits ? undefined : config.limits?.maxPromptTokens,
+      warn: (message) => logger.warn(message),
+    })
+  }
+
+  const groups = manifest.groups.slice(0, maxGroups)
+
   logger.log(`Starting review in ${config.paths.root}`)
   logger.log(`Manifest: ${config.paths.manifestPath}`)
   logger.log(`Report output: ${reportOutputPath}`)
@@ -196,10 +193,16 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
   logger.log(`Model: ${model || "default"}`)
   logger.log(`Reasoning effort: ${reasoningEffort || "default"}`)
   logger.log(`Image detail: ${imageDetail}`)
-  logger.log(`Screenshot groups: ${manifest.groups.length}`)
+  logger.log(`Screenshot groups: ${groups.length}/${manifest.groups.length}`)
   logger.log(`System prompt:\n${prompt}`)
 
-  console.log(`Reviewing ${manifest.groups.length} screenshot group${manifest.groups.length === 1 ? "" : "s"}...`)
+  if (!overrides.noLimits && manifest.groups.length > groups.length) {
+    const message = `Limit reached: ${groups.length}/${maxReviewGroups} review groups processed, skipping remaining.`
+    logger.warn(message)
+    console.warn(message)
+  }
+
+  console.log(`Reviewing ${groups.length} screenshot group${groups.length === 1 ? "" : "s"}...`)
 
   const report = []
   report.push("# UX Review Report")
@@ -214,16 +217,21 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
   report.push(`Model: ${model || "default"}`)
   report.push(`Reasoning effort: ${reasoningEffort || "default"}`)
   report.push(`Image detail: ${imageDetail}`)
+  if (style) {
+    report.push(`Style: ${style}`)
+  }
   report.push("")
-  let totalIssues = 0
 
-  for (let index = 0; index < manifest.groups.length; index += 1) {
-    const group = manifest.groups[index]
+  let aggregateIssues = { critical: 0, major: 0, minor: 0 }
+  const stepDetails = []
+
+  for (let index = 0; index < groups.length; index += 1) {
+    const group = groups[index]
     const filePaths = group.files.map((entry) => toAbsolute(config.paths.root, entry))
-    logger.log(`Processing group ${index + 1}/${manifest.groups.length}: ${group.label}`)
+    logger.log(`Processing group ${index + 1}/${groups.length}: ${group.label}`)
     logger.log(`Images (${filePaths.length}): ${filePaths.join(", ")}`)
-    const startedAt = Date.now()
-    const progress = startProgressAnimation(`Reviewing group ${index + 1}/${manifest.groups.length}: ${group.label}`)
+    const groupStartedAt = Date.now()
+    const progress = startProgressAnimation(`Reviewing group ${index + 1}/${groups.length}: ${group.label}`)
 
     let critique
     try {
@@ -250,36 +258,95 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
                 rootDir: config.paths.root,
                 logger,
               })
-          : await runOpenAiReview({
-              apiKey: process.env[config.review.openai.apiKeyEnv],
-              apiKeyEnv: config.review.openai.apiKeyEnv,
-              imageDetail,
-              model,
-              prompt,
-              label: group.label,
-              filePaths,
-              timeoutMs: config.review.timeoutMs,
-              logger,
-            })
-      progress.stop(`Reviewed group ${index + 1}/${manifest.groups.length}: ${group.label} (${Date.now() - startedAt}ms)`)
+            : await runOpenAiReview({
+                apiKey: process.env[config.review.openai.apiKeyEnv],
+                apiKeyEnv: config.review.openai.apiKeyEnv,
+                imageDetail,
+                model,
+                prompt,
+                label: group.label,
+                filePaths,
+                timeoutMs: config.review.timeoutMs,
+                logger,
+              })
+      progress.stop(`Reviewed group ${index + 1}/${groups.length}: ${group.label} (${Date.now() - groupStartedAt}ms)`)
     } catch (error) {
-      progress.stop(`Review failed for group ${index + 1}/${manifest.groups.length}: ${group.label}`)
+      progress.stop(`Review failed for group ${index + 1}/${groups.length}: ${group.label}`)
       throw error
     }
+
+    const scoreSummary = buildReviewScoreSummary(critique)
+    aggregateIssues = sumIssueCounts(aggregateIssues, scoreSummary.issues)
+    stepDetails.push({
+      label: group.label,
+      duration_ms: Date.now() - groupStartedAt,
+      issues: scoreSummary.issues,
+      score: scoreSummary.score,
+      totalIssues: scoreSummary.totalIssues,
+    })
 
     report.push(`## ${group.label}`)
     report.push("")
     report.push(critique)
     report.push("")
-    totalIssues += countIssuesInCritique(critique)
-    logger.log(`Completed group ${index + 1}/${manifest.groups.length}: ${group.label}`)
+    logger.log(`Completed group ${index + 1}/${groups.length}: ${group.label}`)
   }
+
+  const totalIssues = aggregateIssues.critical + aggregateIssues.major + aggregateIssues.minor
+  const score = totalIssues === 0 ? 100 : computeReviewScore(aggregateIssues)
+
+  report.splice(
+    7,
+    0,
+    `Review score: ${score}/100 (${aggregateIssues.critical} critical, ${aggregateIssues.major} major, ${aggregateIssues.minor} minor)`,
+    ""
+  )
 
   fs.mkdirSync(path.dirname(reportOutputPath), { recursive: true })
   fs.writeFileSync(reportOutputPath, `${report.join("\n")}\n`, "utf8")
-  logger.log(`Finished review for ${manifest.groups.length} groups`)
-  logger.log(`Summary: ${totalIssues} issue${totalIssues === 1 ? "" : "s"} found`)
+  const reportJsonPath = writeArtifact({
+    dir: config.paths.reportsDir || path.join(config.paths.root, ".uxl", "reports"),
+    prefix: "uxl_report",
+    payload: {
+      timestamp: new Date().toISOString(),
+      command: "review",
+      status: "success",
+      duration_ms: Date.now() - startedAt,
+      model: model || null,
+      scope: null,
+      iteration: 1,
+      steps: [
+        {
+          step: "review",
+          duration_ms: Date.now() - startedAt,
+          groups_processed: groups.length,
+          issues: aggregateIssues,
+          score,
+          group_details: stepDetails,
+        },
+      ],
+    },
+  })
+  logger.log(`Finished review for ${groups.length} groups`)
+  logger.log(
+    `Summary: Review score ${score}/100 (${aggregateIssues.critical} critical, ${aggregateIssues.major} major, ${aggregateIssues.minor} minor)`
+  )
   logger.log(`Report written: ${reportOutputPath}`)
-  console.log(`Review complete. ${totalIssues} issue${totalIssues === 1 ? "" : "s"} found.`)
+  logger.log(`Structured report written: ${reportJsonPath}`)
+  console.log(
+    `Review complete. Review score: ${score}/100 (${aggregateIssues.critical} critical, ${aggregateIssues.major} major, ${aggregateIssues.minor} minor).`
+  )
   console.log(`Report: ${reportOutputPath}`)
+
+  return {
+    status: "success",
+    reportPath: reportOutputPath,
+    reportJsonPath,
+    score,
+    issues: aggregateIssues,
+    totalIssues,
+    runner,
+    model: model || null,
+    groupsProcessed: groups.length,
+  }
 }

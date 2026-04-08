@@ -16,7 +16,7 @@ function sanitizeBranchName(name) {
 }
 
 function template(value, vars) {
-  return value.replace(/\{(timestamp|branchName|repoName|repoParent)\}/g, (_, key) => vars[key] || "")
+  return String(value || "").replace(/\{(timestamp|branchName|repoName|repoParent)\}/g, (_, key) => vars[key] || "")
 }
 
 function branchExists(repoRoot, name) {
@@ -30,9 +30,7 @@ function branchExists(repoRoot, name) {
 
 const VALID_TARGETS = ["current", "branch", "worktree"]
 
-export function resolveTarget({ repoRoot, implementConfig, overrides = {} }) {
-  runCommand("git", ["rev-parse", "--is-inside-work-tree"], { cwd: repoRoot })
-
+export function previewTarget({ repoRoot, implementConfig, overrides = {} }) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
   const repoName = path.basename(repoRoot)
   const repoParent = path.dirname(repoRoot)
@@ -44,7 +42,7 @@ export function resolveTarget({ repoRoot, implementConfig, overrides = {} }) {
 
   const branchNameRaw =
     overrides.branch ||
-    template(implementConfig.branchNameTemplate, {
+    template(implementConfig.branchNameTemplate || "uxl-{timestamp}", {
       timestamp,
       repoName,
       repoParent,
@@ -54,7 +52,7 @@ export function resolveTarget({ repoRoot, implementConfig, overrides = {} }) {
 
   const worktreePath = path.resolve(
     overrides.worktree ||
-      template(implementConfig.worktreePathTemplate, {
+      template(implementConfig.worktreePathTemplate || "{repoParent}/{repoName}-{branchName}", {
         timestamp,
         repoName,
         repoParent,
@@ -64,6 +62,7 @@ export function resolveTarget({ repoRoot, implementConfig, overrides = {} }) {
 
   if (target === "current") {
     return {
+      target,
       workDir: repoRoot,
       branchName,
       summary: `Target: current branch in ${repoRoot}`,
@@ -71,34 +70,59 @@ export function resolveTarget({ repoRoot, implementConfig, overrides = {} }) {
   }
 
   if (target === "branch") {
-    if (branchExists(repoRoot, branchName)) {
-      runCommand("git", ["switch", branchName], { cwd: repoRoot, stdio: "inherit" })
-    } else {
-      runCommand("git", ["switch", "-c", branchName], { cwd: repoRoot, stdio: "inherit" })
-    }
     return {
+      target,
       workDir: repoRoot,
       branchName,
       summary: `Target: branch ${branchName} in current working tree`,
     }
   }
 
-  if (fs.existsSync(worktreePath)) {
-    throw new Error(`Worktree path already exists: ${worktreePath}. Use --worktree to override.`)
+  return {
+    target,
+    workDir: worktreePath,
+    branchName,
+    summary: `Target: worktree ${worktreePath} on branch ${branchName}`,
   }
-  if (branchExists(repoRoot, branchName)) {
-    throw new Error(`Branch ${branchName} already exists. Use --branch to override.`)
+}
+
+export function resolveTarget({ repoRoot, implementConfig, overrides = {} }) {
+  runCommand("git", ["rev-parse", "--is-inside-work-tree"], { cwd: repoRoot })
+  const preview = previewTarget({ repoRoot, implementConfig, overrides })
+
+  if (preview.target === "current") {
+    return preview
   }
 
-  runCommand("git", ["worktree", "add", "-b", branchName, worktreePath], {
+  if (preview.target === "branch") {
+    if (branchExists(repoRoot, preview.branchName)) {
+      runCommand("git", ["switch", preview.branchName], { cwd: repoRoot, stdio: "inherit" })
+    } else {
+      runCommand("git", ["switch", "-c", preview.branchName], { cwd: repoRoot, stdio: "inherit" })
+    }
+    return {
+      workDir: repoRoot,
+      branchName: preview.branchName,
+      summary: preview.summary,
+    }
+  }
+
+  if (fs.existsSync(preview.workDir)) {
+    throw new Error(`Worktree path already exists: ${preview.workDir}. Use --worktree to override.`)
+  }
+  if (branchExists(repoRoot, preview.branchName)) {
+    throw new Error(`Branch ${preview.branchName} already exists. Use --branch to override.`)
+  }
+
+  runCommand("git", ["worktree", "add", "-b", preview.branchName, preview.workDir], {
     cwd: repoRoot,
     stdio: "inherit",
   })
 
   return {
-    workDir: worktreePath,
-    branchName,
-    summary: `Target: worktree ${worktreePath} on branch ${branchName}`,
+    workDir: preview.workDir,
+    branchName: preview.branchName,
+    summary: preview.summary,
   }
 }
 
@@ -120,4 +144,8 @@ export function cleanupWorktreeTarget({ repoRoot, workDir, branchName }) {
   if (failures.length > 0) {
     throw new Error(`Failed to clean up worktree target: ${failures.join(" | ")}`)
   }
+}
+
+export function getCurrentBranch(repoRoot) {
+  return runCommand("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repoRoot }).stdout.trim()
 }

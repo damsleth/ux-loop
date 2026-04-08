@@ -22,6 +22,21 @@ const SUPPORTED_ACTION_TYPES = new Set([
   "toggleUntilAttribute",
 ])
 
+const SCREENSHOT_STABILIZER_CSS = `
+*,
+*::before,
+*::after {
+  animation: none !important;
+  transition: none !important;
+  caret-color: transparent !important;
+}
+input,
+textarea,
+[contenteditable="true"] {
+  caret-color: transparent !important;
+}
+`.trim()
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -183,16 +198,52 @@ async function ensureServer({ baseUrl, timeoutMs, startCommand, env, cwd, logger
   return { proc, baseUrl: readyUrl }
 }
 
-async function applyAction(page, action) {
+function getActionTimeout(action) {
+  return action.timeout ?? action.timeoutMs ?? 15000
+}
+
+async function runWithRetries(task, { retries = 2, backoffMs = 250, logger, description }) {
+  let lastError
+  const totalAttempts = retries + 1
+  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+    try {
+      return await task()
+    } catch (error) {
+      lastError = error
+      if (attempt >= totalAttempts) break
+      logger?.warn?.(`${description} failed (attempt ${attempt}/${totalAttempts}); retrying.`)
+      await sleep(backoffMs)
+    }
+  }
+  throw lastError
+}
+
+async function ensureViewport(page, viewport) {
+  if (!viewport) return
+  await page.setViewportSize(viewport)
+}
+
+async function gotoWithViewport(page, url, action, viewport) {
+  await ensureViewport(page, viewport)
+  await page.goto(url, { waitUntil: action.waitUntil || "domcontentloaded" })
+  await ensureViewport(page, viewport)
+}
+
+async function applyAction(page, action, options = {}) {
   const type = action?.type
   if (!type) {
     throw new Error("Each flow action must include a type.")
   }
 
+  const retries = options.actionRetries ?? 2
+  const backoffMs = options.actionRetryBackoffMs ?? 250
+  const logger = options.logger
+  const viewport = options.viewport
+
   if (type === "goto") {
-    await page.goto(action.url, { waitUntil: action.waitUntil || "domcontentloaded" })
+    await gotoWithViewport(page, action.url, action, viewport)
     if (action.waitFor) {
-      await page.waitForSelector(action.waitFor, { timeout: action.timeoutMs || 15000 })
+      await page.waitForSelector(action.waitFor, { timeout: getActionTimeout(action) })
     }
     if (action.settleMs) {
       await page.waitForTimeout(action.settleMs)
@@ -201,12 +252,18 @@ async function applyAction(page, action) {
   }
 
   if (type === "waitForSelector") {
-    await page.waitForSelector(action.selector, { timeout: action.timeoutMs || 15000 })
+    await runWithRetries(
+      () => page.waitForSelector(action.selector, { timeout: getActionTimeout(action) }),
+      { retries, backoffMs, logger, description: `Selector ${action.selector}` }
+    )
     return
   }
 
   if (type === "click") {
-    await page.locator(action.selector).first().click()
+    await runWithRetries(
+      () => page.locator(action.selector).first().click({ timeout: getActionTimeout(action) }),
+      { retries, backoffMs, logger, description: `Click ${action.selector}` }
+    )
     return
   }
 
@@ -216,17 +273,26 @@ async function applyAction(page, action) {
   }
 
   if (type === "fill") {
-    await page.locator(action.selector).first().fill(action.value || "")
+    await runWithRetries(
+      () => page.locator(action.selector).first().fill(action.value || "", { timeout: getActionTimeout(action) }),
+      { retries, backoffMs, logger, description: `Fill ${action.selector}` }
+    )
     return
   }
 
   if (type === "check") {
-    await page.locator(action.selector).first().check()
+    await runWithRetries(
+      () => page.locator(action.selector).first().check({ timeout: getActionTimeout(action) }),
+      { retries, backoffMs, logger, description: `Check ${action.selector}` }
+    )
     return
   }
 
   if (type === "uncheck") {
-    await page.locator(action.selector).first().uncheck()
+    await runWithRetries(
+      () => page.locator(action.selector).first().uncheck({ timeout: getActionTimeout(action) }),
+      { retries, backoffMs, logger, description: `Uncheck ${action.selector}` }
+    )
     return
   }
 
@@ -244,13 +310,18 @@ function toAbsoluteUrl(baseUrl, maybeRelative) {
   return new URL(maybeRelative, baseUrl).toString()
 }
 
-// Handles stateful action types that share cross-action runtime state.
-// Falls through to applyAction for the basic (stateless) action types.
-export async function applyStatefulAction(page, action, runtime, baseUrl) {
+export async function applyStatefulAction(page, action, runtime, baseUrl, options = {}) {
   const type = action?.type
+  const retries = options.actionRetries ?? 2
+  const backoffMs = options.actionRetryBackoffMs ?? 250
+  const logger = options.logger
+  const viewport = options.viewport
 
   if (type === "storeFirstLink") {
-    const href = await page.locator(action.selector).first().getAttribute("href")
+    const href = await runWithRetries(
+      () => page.locator(action.selector).first().getAttribute("href"),
+      { retries, backoffMs, logger, description: `Read link ${action.selector}` }
+    )
     const absolute = toAbsoluteUrl(baseUrl, href)
     if (!absolute && action.required !== false) {
       throw new Error(`storeFirstLink did not find href for selector: ${action.selector}`)
@@ -270,17 +341,19 @@ export async function applyStatefulAction(page, action, runtime, baseUrl) {
     for (const href of hrefs) {
       const candidate = toAbsoluteUrl(baseUrl, href)
       try {
-        await page.goto(candidate, { waitUntil: action.waitUntil || "domcontentloaded" })
+        await gotoWithViewport(page, candidate, action, viewport)
         if (action.waitFor) {
-          await page.waitForSelector(action.waitFor, { timeout: action.timeoutMs || 15000 })
+          await page.waitForSelector(action.waitFor, { timeout: getActionTimeout(action) })
         }
         const count = await page.locator(action.targetSelector).count()
         if (count > 0) {
           found = candidate
           break
         }
-      } catch {
-        // continue
+      } catch (error) {
+        logger?.warn?.(
+          `storeFirstLinkWithSelector skipped candidate ${candidate}: ${error instanceof Error ? error.message : error}`
+        )
       }
     }
 
@@ -301,9 +374,9 @@ export async function applyStatefulAction(page, action, runtime, baseUrl) {
     if (!url) {
       throw new Error(`gotoStored could not find runtime key: ${action.key}`)
     }
-    await page.goto(url, { waitUntil: action.waitUntil || "domcontentloaded" })
+    await gotoWithViewport(page, url, action, viewport)
     if (action.waitFor) {
-      await page.waitForSelector(action.waitFor, { timeout: action.timeoutMs || 15000 })
+      await page.waitForSelector(action.waitFor, { timeout: getActionTimeout(action) })
     }
     if (action.settleMs) {
       await page.waitForTimeout(action.settleMs)
@@ -318,21 +391,46 @@ export async function applyStatefulAction(page, action, runtime, baseUrl) {
       if (current === action.value) {
         return
       }
-      await page.locator(action.toggleSelector).first().click()
+      await page.locator(action.toggleSelector).first().click({ timeout: getActionTimeout(action) })
       await page.waitForTimeout(action.waitMs || 150)
     }
 
     const finalValue = await page.locator(action.targetSelector).first().getAttribute(action.attribute)
-    if (finalValue !== action.value && action.required !== false) {
-      throw new Error(`toggleUntilAttribute did not reach ${action.attribute}=${action.value}`)
+    if (finalValue !== action.value) {
+      if (action.required !== false) {
+        throw new Error(`toggleUntilAttribute did not reach ${action.attribute}=${action.value}`)
+      }
+      logger?.warn?.(`toggleUntilAttribute did not reach ${action.attribute}=${action.value}`)
     }
     return
   }
 
-  await applyAction(page, action)
+  await applyAction(page, action, options)
 }
 
-function resolveDevice(device, playwrightDevices) {
+function clampViewport(viewport, maxResolution, logger, deviceName) {
+  if (!viewport || !maxResolution?.width || !maxResolution?.height) {
+    return viewport
+  }
+
+  const widthScale = maxResolution.width / viewport.width
+  const heightScale = maxResolution.height / viewport.height
+  const scale = Math.min(1, widthScale, heightScale)
+  if (scale === 1) {
+    return viewport
+  }
+
+  const clamped = {
+    width: Math.max(1, Math.floor(viewport.width * scale)),
+    height: Math.max(1, Math.floor(viewport.height * scale)),
+  }
+  logger?.warn?.(
+    `Clamping viewport for ${deviceName}: ${viewport.width}x${viewport.height} -> ${clamped.width}x${clamped.height}`
+  )
+  return clamped
+}
+
+function resolveDevice(device, playwrightDevices, maxResolution, logger) {
   if (!device?.name) {
     throw new Error("Each capture device must include a unique name.")
   }
@@ -345,18 +443,19 @@ function resolveDevice(device, playwrightDevices) {
     return {
       name: device.name,
       contextOptions: descriptor,
-      viewport: descriptor.viewport,
+      viewport: clampViewport(descriptor.viewport, maxResolution, logger, device.name),
     }
   }
 
   if (!Number.isFinite(device.width) || !Number.isFinite(device.height)) {
-    throw new Error(`Device \"${device.name}\" must set width/height or playwrightDevice.`)
+    throw new Error(`Device "${device.name}" must set width/height or playwrightDevice.`)
   }
 
+  const viewport = clampViewport({ width: device.width, height: device.height }, maxResolution, logger, device.name)
   return {
     name: device.name,
     contextOptions: {},
-    viewport: { width: device.width, height: device.height },
+    viewport,
   }
 }
 
@@ -370,19 +469,25 @@ function resolveFlowUrl(baseUrl, flowPathOrUrl) {
   return new URL(flowPathOrUrl, baseUrl).toString()
 }
 
-async function runFlow({ page, flow, baseUrl, shotsDir, deviceName, runtime }) {
+async function prepareScreenshot(page, flow, options) {
+  await page.addStyleTag({ content: SCREENSHOT_STABILIZER_CSS })
+  await page.waitForLoadState(flow.screenshot?.waitUntil || options.screenshotWaitUntil || "load")
+  await page.waitForTimeout(flow.screenshot?.stabilizationDelayMs ?? options.stabilizationDelayMs ?? 200)
+}
+
+async function runFlow({ page, flow, baseUrl, shotsDir, deviceName, runtime, options, captureState }) {
   const screenshotName = flow.screenshot?.name || flow.name || flow.slug
   if (!screenshotName) {
-    throw new Error(`Flow \"${flow.label || "(unnamed)"}\" must define screenshot.name or name.`)
+    throw new Error(`Flow "${flow.label || "(unnamed)"}" must define screenshot.name or name.`)
   }
 
   const url = resolveFlowUrl(baseUrl, flow.path)
   if (url) {
-    await page.goto(url, { waitUntil: flow.waitUntil || "domcontentloaded" })
+    await gotoWithViewport(page, url, flow, options.viewport)
   }
 
   if (flow.waitFor) {
-    await page.waitForSelector(flow.waitFor, { timeout: flow.timeoutMs || 15000 })
+    await page.waitForSelector(flow.waitFor, { timeout: getActionTimeout(flow) })
   }
 
   if (Array.isArray(flow.actions)) {
@@ -390,7 +495,7 @@ async function runFlow({ page, flow, baseUrl, shotsDir, deviceName, runtime }) {
       const normalizedAction = action.type === "goto" && action.path
         ? { ...action, url: resolveFlowUrl(baseUrl, action.path) }
         : action
-      await applyStatefulAction(page, normalizedAction, runtime, baseUrl)
+      await applyStatefulAction(page, normalizedAction, runtime, baseUrl, options)
     }
   }
 
@@ -398,7 +503,26 @@ async function runFlow({ page, flow, baseUrl, shotsDir, deviceName, runtime }) {
     await page.waitForTimeout(flow.settleMs)
   }
 
+  if (options.validateOnly) {
+    if (flow.screenshot?.selector) {
+      await page.locator(flow.screenshot.selector).first().waitFor({ timeout: getActionTimeout(flow.screenshot) })
+    }
+    return null
+  }
+
+  if (Number.isFinite(captureState.maxScreenshots) && captureState.count >= captureState.maxScreenshots) {
+    captureState.limitReached = true
+    if (!captureState.limitLogged) {
+      captureState.logger?.warn?.(
+        `Limit reached: ${captureState.count}/${captureState.maxScreenshots} screenshots captured, skipping remaining.`
+      )
+      captureState.limitLogged = true
+    }
+    return null
+  }
+
   const screenshotPath = path.join(shotsDir, `${screenshotName}-${deviceName}.png`)
+  await prepareScreenshot(page, flow, options)
 
   if (flow.screenshot?.selector) {
     const target = page.locator(flow.screenshot.selector).first()
@@ -413,7 +537,57 @@ async function runFlow({ page, flow, baseUrl, shotsDir, deviceName, runtime }) {
     })
   }
 
+  captureState.count += 1
   return screenshotPath
+}
+
+function buildResolvedFlows(flows) {
+  return flows.length > 0
+    ? flows
+    : [
+        {
+          label: "Home - Mobile vs Desktop",
+          name: "home",
+          path: "/",
+          waitFor: "body",
+          settleMs: 200,
+          screenshot: { fullPage: true },
+        },
+      ]
+}
+
+async function withBrowser(options, context, work) {
+  const playwright = await import("playwright")
+  const chromium = playwright.chromium
+  const playwrightDevices = playwright.devices
+
+  const baseUrl = options.baseUrl || context.baseUrl
+  const timeoutMs = options.timeoutMs || context.timeoutMs || 120000
+  const rootDir = context.rootDir
+  const logger = context.logger || console
+  const server = await ensureServer({
+    baseUrl,
+    timeoutMs,
+    startCommand: options.startCommand,
+    env: { ...process.env, ...(context.env || {}), ...(options.env || {}) },
+    cwd: rootDir,
+    logger,
+  })
+  const browser = await chromium.launch(options.launch || {})
+
+  try {
+    return await work({
+      browser,
+      playwrightDevices,
+      logger,
+      baseUrl: server.baseUrl || baseUrl,
+    })
+  } finally {
+    await browser.close()
+    if (server.proc) {
+      await stopServerProcess(server.proc, logger)
+    }
+  }
 }
 
 export function createPlaywrightCaptureHarness(options = {}) {
@@ -422,52 +596,25 @@ export function createPlaywrightCaptureHarness(options = {}) {
   const flows = Array.isArray(options.flows) ? options.flows : []
 
   return async function captureUx(context) {
-    const playwright = await import("playwright")
-    const chromium = playwright.chromium
-    const playwrightDevices = playwright.devices
-
-    const baseUrl = options.baseUrl || context.baseUrl
-    const timeoutMs = options.timeoutMs || context.timeoutMs || 120000
     const shotsDir = context.shotsDir
-    const rootDir = context.rootDir
-    const logger = context.logger || console
-
     if (!shotsDir) {
       throw new Error("Capture context is missing shotsDir.")
     }
 
-    const resolvedFlows = flows.length > 0
-      ? flows
-      : [
-          {
-            label: "Home — Mobile vs Desktop",
-            name: "home",
-            path: "/",
-            waitFor: "body",
-            settleMs: 200,
-            screenshot: { fullPage: true },
-          },
-        ]
-
     fs.mkdirSync(shotsDir, { recursive: true })
 
-    const server = await ensureServer({
-      baseUrl,
-      timeoutMs,
-      startCommand: options.startCommand,
-      env: { ...process.env, ...(context.env || {}), ...(options.env || {}) },
-      cwd: rootDir,
-      logger,
-    })
-    const activeBaseUrl = server.baseUrl || baseUrl
-
-    const browser = await chromium.launch(options.launch || {})
-
-    try {
+    return withBrowser(options, context, async ({ browser, playwrightDevices, logger, baseUrl }) => {
       const groups = []
       const runtime = {}
+      const captureState = {
+        count: 0,
+        maxScreenshots: options.maxScreenshots,
+        limitReached: false,
+        limitLogged: false,
+        logger,
+      }
 
-      for (const flow of resolvedFlows) {
+      for (const flow of buildResolvedFlows(flows)) {
         if (!flow.label) {
           throw new Error("Each flow must include a label.")
         }
@@ -475,41 +622,114 @@ export function createPlaywrightCaptureHarness(options = {}) {
         const files = []
 
         for (const rawDevice of devices) {
-          const device = resolveDevice(rawDevice, playwrightDevices)
-          const browserContext = await browser.newContext(device.contextOptions)
+          const device = resolveDevice(rawDevice, playwrightDevices, options.maxResolution, logger)
+          const browserContext = await browser.newContext({
+            ...device.contextOptions,
+            viewport: device.viewport,
+          })
           const page = await browserContext.newPage()
 
           try {
-            if (device.viewport) {
-              await page.setViewportSize(device.viewport)
-            }
+            await ensureViewport(page, device.viewport)
             const screenshotPath = await runFlow({
               page,
               flow,
-              baseUrl: activeBaseUrl,
+              baseUrl,
               shotsDir,
               deviceName: device.name,
               runtime,
+              options: {
+                ...options,
+                viewport: device.viewport,
+                logger,
+              },
+              captureState,
             })
-            files.push(screenshotPath)
+            if (screenshotPath) {
+              files.push(screenshotPath)
+            }
+          } finally {
+            await browserContext.close()
+          }
+
+          if (captureState.limitReached) {
+            break
+          }
+        }
+
+        if (files.length > 0) {
+          groups.push({
+            label: flow.label,
+            files,
+          })
+        }
+
+        if (captureState.limitReached) {
+          break
+        }
+      }
+
+      return groups
+    })
+  }
+}
+
+export function createPlaywrightFlowValidator(options = {}) {
+  validatePlaywrightCaptureDefinition(options)
+  const devices = Array.isArray(options.devices) && options.devices.length > 0 ? options.devices : DEFAULT_DEVICES
+  const flows = Array.isArray(options.flows) ? options.flows : []
+
+  return async function validateFlows(context) {
+    return withBrowser(options, context, async ({ browser, playwrightDevices, logger, baseUrl }) => {
+      const runtime = {}
+      const results = []
+
+      for (const flow of buildResolvedFlows(flows)) {
+        for (const rawDevice of devices) {
+          const device = resolveDevice(rawDevice, playwrightDevices, options.maxResolution, logger)
+          const browserContext = await browser.newContext({
+            ...device.contextOptions,
+            viewport: device.viewport,
+          })
+          const page = await browserContext.newPage()
+
+          try {
+            await ensureViewport(page, device.viewport)
+            await runFlow({
+              page,
+              flow,
+              baseUrl,
+              shotsDir: context.shotsDir || path.join(context.rootDir || process.cwd(), ".uxl", "shots"),
+              deviceName: device.name,
+              runtime,
+              options: {
+                ...options,
+                validateOnly: true,
+                viewport: device.viewport,
+                logger,
+              },
+              captureState: { count: 0, maxScreenshots: undefined, logger },
+            })
+            results.push({
+              flow: flow.name || flow.slug || flow.label,
+              device: device.name,
+              status: "ok",
+            })
+          } catch (error) {
+            results.push({
+              flow: flow.name || flow.slug || flow.label,
+              device: device.name,
+              status: "failed",
+              error: error instanceof Error ? error.message : String(error),
+            })
           } finally {
             await browserContext.close()
           }
         }
-
-        groups.push({
-          label: flow.label,
-          files,
-        })
       }
 
-      return groups
-    } finally {
-      await browser.close()
-      if (server.proc) {
-        await stopServerProcess(server.proc, logger)
-      }
-    }
+      return results
+    })
   }
 }
 
@@ -538,7 +758,7 @@ export function validatePlaywrightCaptureDefinition(options = {}) {
       if (!device.playwrightDevice) {
         const hasDimensions = Number.isFinite(device.width) && Number.isFinite(device.height)
         if (!hasDimensions) {
-          throw new Error(`Device \"${device.name}\" must set width/height or playwrightDevice.`)
+          throw new Error(`Device "${device.name}" must set width/height or playwrightDevice.`)
         }
       }
     }
@@ -557,16 +777,16 @@ export function validatePlaywrightCaptureDefinition(options = {}) {
         throw new Error("Each flow must include a label.")
       }
       if (!flow.screenshot?.name && !flow.name && !flow.slug) {
-        throw new Error(`Flow \"${flow.label}\" must define screenshot.name, name, or slug.`)
+        throw new Error(`Flow "${flow.label}" must define screenshot.name, name, or slug.`)
       }
 
       if (flow.actions !== undefined) {
         if (!Array.isArray(flow.actions)) {
-          throw new Error(`Flow \"${flow.label}\" actions must be an array.`)
+          throw new Error(`Flow "${flow.label}" actions must be an array.`)
         }
         for (const action of flow.actions) {
           if (!action || typeof action !== "object") {
-            throw new Error(`Flow \"${flow.label}\" contains a non-object action.`)
+            throw new Error(`Flow "${flow.label}" contains a non-object action.`)
           }
           if (!SUPPORTED_ACTION_TYPES.has(action.type)) {
             throw new Error(`Unsupported flow action type: ${action.type}`)

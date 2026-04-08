@@ -9,6 +9,9 @@ const DEFAULTS = {
     manifestPath: ".uxl/shots/manifest.json",
     reportPath: ".uxl/report.md",
     logsDir: ".uxl/logs",
+    diffsDir: ".uxl/diffs",
+    snapshotsDir: ".uxl/snapshots",
+    reportsDir: ".uxl/reports",
   },
   capture: {
     runner: "playwright",
@@ -27,6 +30,10 @@ const DEFAULTS = {
       flows: undefined,
       launch: undefined,
       env: {},
+      actionRetries: 2,
+      actionRetryBackoffMs: 250,
+      screenshotWaitUntil: "load",
+      stabilizationDelayMs: 200,
     },
   },
   review: {
@@ -49,6 +56,7 @@ const DEFAULTS = {
   implement: {
     runner: "codex",
     target: "worktree",
+    scope: "layout-safe",
     branchNameTemplate: "uxl-{timestamp}",
     worktreePathTemplate: "{repoParent}/{repoName}-{branchName}",
     autoCommit: false,
@@ -67,6 +75,18 @@ const DEFAULTS = {
     runReview: true,
     runImplement: true,
     stopOnError: true,
+    maxIterations: 1,
+    scoreThreshold: 90,
+  },
+  style: undefined,
+  limits: {
+    maxScreenshots: 50,
+    maxResolution: {
+      width: 1920,
+      height: 1080,
+    },
+    maxPromptTokens: 32000,
+    maxReviewGroups: 20,
   },
   output: {
     verbose: false,
@@ -111,6 +131,13 @@ function validateOptionalPositiveNumber(value, label) {
   if (value === undefined) return
   if (!Number.isFinite(value) || value <= 0) {
     throw new Error(`Invalid ${label}: expected a positive number.`)
+  }
+}
+
+function validateOptionalNonNegativeInteger(value, label) {
+  if (value === undefined) return
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid ${label}: expected a non-negative integer.`)
   }
 }
 
@@ -223,11 +250,30 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
   validateEnum(merged.review.runner, ["codex", "copilot", "openai"], "review.runner")
   validateEnum(merged.implement.runner, ["codex", "copilot"], "implement.runner")
   validateEnum(merged.implement.target, ["current", "branch", "worktree"], "implement.target")
+  validateEnum(merged.implement.scope, ["css-only", "text-only", "layout-safe", "unrestricted"], "implement.scope")
   validateOptionalEnum(merged.review.reasoningEffort, ["low", "medium", "high", "extraHigh"], "review.reasoningEffort")
   validateOptionalEnum(merged.implement.reasoningEffort, ["low", "medium", "high", "extraHigh"], "implement.reasoningEffort")
   validateOptionalEnum(merged.review.openai.imageDetail, ["low", "auto", "high"], "review.openai.imageDetail")
+  validateOptionalEnum(merged.capture.playwright.screenshotWaitUntil, ["load", "domcontentloaded", "networkidle"], "capture.playwright.screenshotWaitUntil")
   validateOptionalPositiveNumber(merged.review.timeoutMs, "review.timeoutMs")
   validateOptionalPositiveNumber(merged.implement.timeoutMs, "implement.timeoutMs")
+  validateOptionalNonNegativeInteger(merged.capture.playwright.actionRetries, "capture.playwright.actionRetries")
+  validateOptionalPositiveNumber(merged.capture.playwright.actionRetryBackoffMs, "capture.playwright.actionRetryBackoffMs")
+  validateOptionalPositiveNumber(merged.capture.playwright.stabilizationDelayMs, "capture.playwright.stabilizationDelayMs")
+  validateOptionalPositiveNumber(merged.run.maxIterations, "run.maxIterations")
+  validateOptionalPositiveNumber(merged.run.scoreThreshold, "run.scoreThreshold")
+
+  if (!isObject(merged.limits)) {
+    throw new Error(`limits must be an object in ${configFilePath}.`)
+  }
+  if (!isObject(merged.limits.maxResolution)) {
+    throw new Error(`limits.maxResolution must be an object in ${configFilePath}.`)
+  }
+  validateOptionalPositiveNumber(merged.limits.maxScreenshots, "limits.maxScreenshots")
+  validateOptionalPositiveNumber(merged.limits.maxPromptTokens, "limits.maxPromptTokens")
+  validateOptionalPositiveNumber(merged.limits.maxReviewGroups, "limits.maxReviewGroups")
+  validateOptionalPositiveNumber(merged.limits.maxResolution.width, "limits.maxResolution.width")
+  validateOptionalPositiveNumber(merged.limits.maxResolution.height, "limits.maxResolution.height")
 
   if (!isObject(merged.capture.onboarding)) {
     throw new Error(`capture.onboarding must be an object in ${configFilePath}.`)
@@ -289,6 +335,9 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
   merged.paths.manifestPath = resolvePath(root, merged.paths.manifestPath)
   merged.paths.reportPath = resolvePath(root, merged.paths.reportPath)
   merged.paths.logsDir = resolvePath(root, merged.paths.logsDir)
+  merged.paths.diffsDir = resolvePath(root, merged.paths.diffsDir)
+  merged.paths.snapshotsDir = resolvePath(root, merged.paths.snapshotsDir)
+  merged.paths.reportsDir = resolvePath(root, merged.paths.reportsDir)
 
   if (merged.capture.adapter) {
     merged.capture.adapter = resolvePath(root, merged.capture.adapter)
