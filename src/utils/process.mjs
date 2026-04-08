@@ -1,12 +1,18 @@
 import { spawn, spawnSync } from "child_process"
 
 export function runCommand(command, args, options = {}) {
+  const { timeoutMs, ...spawnOptions } = options
   const result = spawnSync(command, args, {
     encoding: "utf8",
-    ...options,
+    killSignal: "SIGKILL",
+    timeout: timeoutMs,
+    ...spawnOptions,
   })
 
   if (result.error) {
+    if (result.error.code === "ETIMEDOUT") {
+      throw new Error(`${command} ${args.join(" ")} timed out after ${timeoutMs}ms`)
+    }
     throw result.error
   }
 
@@ -19,7 +25,7 @@ export function runCommand(command, args, options = {}) {
 }
 
 export function runCommandAsync(command, args, options = {}) {
-  const { input, maxBuffer = 10 * 1024 * 1024, ...spawnOptions } = options
+  const { input, maxBuffer = 10 * 1024 * 1024, timeoutMs, ...spawnOptions } = options
 
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -31,10 +37,12 @@ export function runCommandAsync(command, args, options = {}) {
     let stderr = ""
     let totalBytes = 0
     let settled = false
+    let timeoutId
 
     const fail = (error) => {
       if (settled) return
       settled = true
+      if (timeoutId) clearTimeout(timeoutId)
       reject(error)
     }
 
@@ -60,6 +68,7 @@ export function runCommandAsync(command, args, options = {}) {
     child.on("error", (error) => fail(error))
     child.on("close", (status) => {
       if (settled) return
+      if (timeoutId) clearTimeout(timeoutId)
       if (status !== 0) {
         const details = (stderr || stdout || "").trim()
         fail(new Error(`${command} ${args.join(" ")} failed: ${details}`))
@@ -76,6 +85,17 @@ export function runCommandAsync(command, args, options = {}) {
     if (child.stdin) {
       if (input !== undefined) child.stdin.end(input)
       else child.stdin.end()
+    }
+
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        try {
+          child.kill("SIGKILL")
+        } catch {
+          // ignore
+        }
+        fail(new Error(`${command} ${args.join(" ")} timed out after ${timeoutMs}ms`))
+      }, timeoutMs)
     }
   })
 }

@@ -19,3 +19,30 @@ test("loadRawConfig wraps import syntax errors with config path", async () => {
 
   fs.rmSync(cwd, { recursive: true, force: true })
 })
+
+test("loadRawConfig loads workspace .env values before importing config", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-config-env-"))
+  const configPath = path.join(cwd, "uxl.config.mjs")
+  const previous = process.env.UI_REVIEW_BASE_URL
+
+  fs.writeFileSync(path.join(cwd, ".env"), "UI_REVIEW_BASE_URL=http://127.0.0.1:4321\n", "utf8")
+  fs.writeFileSync(
+    configPath,
+    "export default { capture: { baseUrl: process.env.UI_REVIEW_BASE_URL } }\n",
+    "utf8"
+  )
+
+  delete process.env.UI_REVIEW_BASE_URL
+
+  try {
+    const result = await loadRawConfig(cwd)
+    assert.equal(result.raw.capture.baseUrl, "http://127.0.0.1:4321")
+  } finally {
+    if (previous === undefined) {
+      delete process.env.UI_REVIEW_BASE_URL
+    } else {
+      process.env.UI_REVIEW_BASE_URL = previous
+    }
+    fs.rmSync(cwd, { recursive: true, force: true })
+  }
+})

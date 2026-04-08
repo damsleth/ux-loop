@@ -14,7 +14,16 @@ export function assertCopilotReady(copilotBin) {
   runCommand(copilotBin, ["--version"])
 }
 
-export async function reviewWithCopilot({ copilotBin, model, prompt, label, filePaths, rootDir, logger = console }) {
+export async function reviewWithCopilot({
+  copilotBin,
+  model,
+  timeoutMs,
+  prompt,
+  label,
+  filePaths,
+  rootDir,
+  logger = console,
+}) {
   for (const filePath of filePaths) {
     if (!fs.existsSync(filePath)) {
       throw new Error(`Missing screenshot: ${filePath}`)
@@ -49,6 +58,7 @@ ${screenshotList}`
   const result = await runCommandAsync(copilotBin, args, {
     maxBuffer: 10 * 1024 * 1024,
     cwd: rootDir,
+    timeoutMs,
   })
   logger?.log?.(`Copilot completed for "${label}" in ${Date.now() - startedAt}ms`)
 

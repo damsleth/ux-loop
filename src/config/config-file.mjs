@@ -1,6 +1,7 @@
 import fs from "fs"
 import path from "path"
 import { pathToFileURL } from "url"
+import { loadWorkspaceEnv } from "../utils/load-workspace-env.mjs"
 
 function serializeConfig(config) {
   return `import { defineUxlConfig } from "@damsleth/ux-loop"\n\nexport default defineUxlConfig(${JSON.stringify(
@@ -15,6 +16,7 @@ export function getConfigPath(cwd = process.cwd()) {
 }
 
 export async function loadRawConfig(cwd = process.cwd()) {
+  loadWorkspaceEnv(cwd)
   const configPath = getConfigPath(cwd)
   if (!fs.existsSync(configPath)) {
     throw new Error(`Missing uxl.config.mjs at ${configPath}. Run \`uxl init\`.`)

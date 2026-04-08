@@ -8,19 +8,53 @@ import { reviewWithOpenAi } from "../runners/review-openai.mjs"
 import { createCommandLogger } from "../utils/command-logger.mjs"
 import { validateReasoningEffort } from "../utils/reasoning-effort.mjs"
 
-export function parseReviewArgs(args) {
+export const REVIEW_OPTION_NAMES = new Set(["runner", "model", "reasoning-effort", "image-detail"])
+
+function parseOptionArgs(args, allowedOptions) {
   const values = {}
   for (let i = 0; i < args.length; i += 1) {
     const token = args[i]
-    if (token.startsWith("--runner=")) values.runner = token.slice("--runner=".length)
-    else if (token === "--runner") values.runner = args[i + 1]
-    if (token.startsWith("--model=")) values.model = token.slice("--model=".length)
-    else if (token === "--model") values.model = args[i + 1]
-    if (token.startsWith("--reasoning-effort=")) values.reasoningEffort = token.slice("--reasoning-effort=".length)
-    else if (token === "--reasoning-effort") values.reasoningEffort = args[i + 1]
-    if (token.startsWith("--image-detail=")) values.imageDetail = token.slice("--image-detail=".length)
-    else if (token === "--image-detail") values.imageDetail = args[i + 1]
+    if (!token.startsWith("--")) {
+      throw new Error(`Unexpected positional argument: ${token}`)
+    }
+
+    if (token.includes("=")) {
+      const [rawKey, ...rest] = token.slice(2).split("=")
+      if (!allowedOptions.has(rawKey)) {
+        throw new Error(`Unknown flag: --${rawKey}`)
+      }
+      const value = rest.join("=")
+      if (!value) {
+        throw new Error(`Missing value for --${rawKey}`)
+      }
+      values[rawKey] = value
+      continue
+    }
+
+    const key = token.slice(2)
+    if (!allowedOptions.has(key)) {
+      throw new Error(`Unknown flag: --${key}`)
+    }
+
+    const next = args[i + 1]
+    if (!next || next.startsWith("--")) {
+      throw new Error(`Missing value for --${key}`)
+    }
+
+    values[key] = next
+    i += 1
   }
+
+  return values
+}
+
+export function parseReviewArgs(args) {
+  const parsed = parseOptionArgs(args, REVIEW_OPTION_NAMES)
+  const values = {}
+  if (parsed.runner !== undefined) values.runner = parsed.runner
+  if (parsed.model !== undefined) values.model = parsed.model
+  if (parsed["reasoning-effort"] !== undefined) values.reasoningEffort = parsed["reasoning-effort"]
+  if (parsed["image-detail"] !== undefined) values.imageDetail = parsed["image-detail"]
   return values
 }
 
@@ -94,27 +128,42 @@ function pad2(value) {
   return String(value).padStart(2, "0")
 }
 
-function buildTimestampedReportName(date = new Date()) {
+function pad3(value) {
+  return String(value).padStart(3, "0")
+}
+
+export function buildTimestampedReportName(date = new Date()) {
   const yyyy = date.getFullYear()
   const mm = pad2(date.getMonth() + 1)
   const dd = pad2(date.getDate())
   const hh = pad2(date.getHours())
   const min = pad2(date.getMinutes())
-  return `uxl_report_${yyyy}-${mm}-${dd}_${hh}${min}.md`
+  const sec = pad2(date.getSeconds())
+  const ms = pad3(date.getMilliseconds())
+  return `uxl_report_${yyyy}-${mm}-${dd}_${hh}${min}${sec}${ms}.md`
 }
 
-function resolveReportOutputPath(configuredReportPath, date = new Date()) {
+export function resolveReportOutputPath(configuredReportPath, date = new Date()) {
   if (path.basename(configuredReportPath) !== "report.md") {
     return configuredReportPath
   }
   return path.join(path.dirname(configuredReportPath), buildTimestampedReportName(date))
 }
 
-export async function runReview(args = [], cwd = process.cwd()) {
+export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
   const overrides = parseReviewArgs(args)
-  const config = await loadConfig(cwd)
+  const load = runtime.loadConfig || loadConfig
+  const runCodexReview = runtime.reviewWithCodex || reviewWithCodex
+  const runCopilotReview = runtime.reviewWithCopilot || reviewWithCopilot
+  const runOpenAiReview = runtime.reviewWithOpenAi || reviewWithOpenAi
+  const loggerFactory = runtime.createCommandLogger || createCommandLogger
+  const config = await load(cwd)
   const manifest = readManifest(config.paths.manifestPath)
-  const logger = createCommandLogger({ scope: "review", logsDir: config.paths.logsDir })
+  const logger = loggerFactory({
+    scope: "review",
+    logsDir: config.paths.logsDir,
+    echoToConsole: config.output.verbose,
+  })
   validateReasoningEffort(overrides.reasoningEffort, "--reasoning-effort")
   validateImageDetail(overrides.imageDetail, "--image-detail")
 
@@ -150,6 +199,8 @@ export async function runReview(args = [], cwd = process.cwd()) {
   logger.log(`Screenshot groups: ${manifest.groups.length}`)
   logger.log(`System prompt:\n${prompt}`)
 
+  console.log(`Reviewing ${manifest.groups.length} screenshot group${manifest.groups.length === 1 ? "" : "s"}...`)
+
   const report = []
   report.push("# UX Review Report")
   report.push("")
@@ -178,32 +229,36 @@ export async function runReview(args = [], cwd = process.cwd()) {
     try {
       critique =
         runner === "codex"
-          ? await reviewWithCodex({
+          ? await runCodexReview({
               codexBin: config.review.codex.bin,
               model,
               reasoningEffort,
+              timeoutMs: config.review.timeoutMs,
               prompt,
               label: group.label,
               filePaths,
               logger,
             })
           : runner === "copilot"
-            ? await reviewWithCopilot({
+            ? await runCopilotReview({
                 copilotBin: config.review.copilot.bin,
                 model,
+                timeoutMs: config.review.timeoutMs,
                 prompt,
                 label: group.label,
                 filePaths,
                 rootDir: config.paths.root,
                 logger,
               })
-          : await reviewWithOpenAi({
+          : await runOpenAiReview({
               apiKey: process.env[config.review.openai.apiKeyEnv],
+              apiKeyEnv: config.review.openai.apiKeyEnv,
               imageDetail,
               model,
               prompt,
               label: group.label,
               filePaths,
+              timeoutMs: config.review.timeoutMs,
               logger,
             })
       progress.stop(`Reviewed group ${index + 1}/${manifest.groups.length}: ${group.label} (${Date.now() - startedAt}ms)`)
@@ -225,4 +280,6 @@ export async function runReview(args = [], cwd = process.cwd()) {
   logger.log(`Finished review for ${manifest.groups.length} groups`)
   logger.log(`Summary: ${totalIssues} issue${totalIssues === 1 ? "" : "s"} found`)
   logger.log(`Report written: ${reportOutputPath}`)
+  console.log(`Review complete. ${totalIssues} issue${totalIssues === 1 ? "" : "s"} found.`)
+  console.log(`Report: ${reportOutputPath}`)
 }

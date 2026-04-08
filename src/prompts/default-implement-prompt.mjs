@@ -1,4 +1,8 @@
-export function buildDefaultImplementPrompt(reportMarkdown) {
+export function buildDefaultImplementPrompt(reportMarkdown, options = {}) {
+  const commitInstruction = options.autoCommit
+    ? "- Do not create commits yourself; the CLI will commit after a successful run."
+    : "- Do not auto-commit."
+
   return [
     "You are implementing UX improvements based on a visual review report.",
     "",
@@ -7,7 +11,7 @@ export function buildDefaultImplementPrompt(reportMarkdown) {
     "- Apply incremental, high-impact changes only (no redesign).",
     "- Prioritize readability, spacing, alignment, contrast, and affordances.",
     "- Avoid speculative or unrelated changes.",
-    "- Do not auto-commit.",
+    commitInstruction,
     "",
     "Task:",
     "1. Read the report.",

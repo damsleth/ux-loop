@@ -33,6 +33,7 @@ const DEFAULTS = {
     runner: "codex",
     model: undefined,
     reasoningEffort: undefined,
+    timeoutMs: 600000,
     systemPrompt: undefined,
     codex: {
       bin: "codex",
@@ -51,6 +52,7 @@ const DEFAULTS = {
     branchNameTemplate: "uxl-{timestamp}",
     worktreePathTemplate: "{repoParent}/{repoName}-{branchName}",
     autoCommit: false,
+    timeoutMs: 900000,
     codex: {
       bin: "codex",
     },
@@ -65,6 +67,9 @@ const DEFAULTS = {
     runReview: true,
     runImplement: true,
     stopOnError: true,
+  },
+  output: {
+    verbose: false,
   },
 }
 
@@ -100,6 +105,13 @@ function validateEnum(value, allowed, label) {
 function validateOptionalEnum(value, allowed, label) {
   if (value === undefined) return
   validateEnum(value, allowed, label)
+}
+
+function validateOptionalPositiveNumber(value, label) {
+  if (value === undefined) return
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid ${label}: expected a positive number.`)
+  }
 }
 
 function validateFlowInventory(flowInventory, configFilePath) {
@@ -214,11 +226,25 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
   validateOptionalEnum(merged.review.reasoningEffort, ["low", "medium", "high", "extraHigh"], "review.reasoningEffort")
   validateOptionalEnum(merged.implement.reasoningEffort, ["low", "medium", "high", "extraHigh"], "implement.reasoningEffort")
   validateOptionalEnum(merged.review.openai.imageDetail, ["low", "auto", "high"], "review.openai.imageDetail")
+  validateOptionalPositiveNumber(merged.review.timeoutMs, "review.timeoutMs")
+  validateOptionalPositiveNumber(merged.implement.timeoutMs, "implement.timeoutMs")
 
   if (!isObject(merged.capture.onboarding)) {
     throw new Error(`capture.onboarding must be an object in ${configFilePath}.`)
   }
   validateEnum(merged.capture.onboarding.status, ["pending", "complete"], "capture.onboarding.status")
+
+  if (typeof merged.implement.autoCommit !== "boolean") {
+    throw new Error(`implement.autoCommit must be boolean in ${configFilePath}.`)
+  }
+
+  if (!isObject(merged.output)) {
+    throw new Error(`output must be an object in ${configFilePath}.`)
+  }
+
+  if (typeof merged.output.verbose !== "boolean") {
+    throw new Error(`output.verbose must be boolean in ${configFilePath}.`)
+  }
 
   validateFlowInventory(merged.capture.flowInventory, configFilePath)
   merged.capture.flowInventory = merged.capture.flowInventory.map((entry) => ({

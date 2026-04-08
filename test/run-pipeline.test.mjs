@@ -77,3 +77,23 @@ test("runPipeline logs and continues when stopOnError=false", async () => {
   assert.equal(logs.length, 1)
   assert.match(logs[0], /\[uxl:shots\] shots failed/)
 })
+
+test("runPipeline splits shared flags by command", async () => {
+  let seenReviewArgs = null
+  let seenImplementArgs = null
+
+  await runPipeline(["--runner", "openai", "--target", "branch"], "/tmp/project", {
+    loadConfig: async () => createBaseConfig(),
+    runShots: async () => {},
+    runReview: async (args) => {
+      seenReviewArgs = args
+    },
+    runImplement: async (args) => {
+      seenImplementArgs = args
+    },
+    errorLogger: () => {},
+  })
+
+  assert.deepEqual(seenReviewArgs, ["--runner", "openai"])
+  assert.deepEqual(seenImplementArgs, ["--target", "branch"])
+})

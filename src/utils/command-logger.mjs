@@ -48,7 +48,7 @@ function rotateScopeLogs(logsDir, scope, maxFiles = 50) {
   }
 }
 
-export function createCommandLogger({ scope, logsDir }) {
+export function createCommandLogger({ scope, logsDir, echoToConsole = true }) {
   if (!scope || !logsDir) {
     throw new Error("createCommandLogger requires scope and logsDir.")
   }
@@ -63,10 +63,12 @@ export function createCommandLogger({ scope, logsDir }) {
     for (const line of lines) {
       const now = new Date()
       fileLines.push(`[${formatFileTimestamp(now)}] [uxl:${scope}] ${line}`)
-      const terminalLine = `[${formatTerminalTime(now)}] ${line}`
-      if (level === "error") console.error(terminalLine)
-      else if (level === "warn") console.warn(terminalLine)
-      else console.log(terminalLine)
+      if (echoToConsole) {
+        const terminalLine = `[${formatTerminalTime(now)}] ${line}`
+        if (level === "error") console.error(terminalLine)
+        else if (level === "warn") console.warn(terminalLine)
+        else console.log(terminalLine)
+      }
     }
     fs.appendFileSync(logPath, `${fileLines.join("\n")}\n`, "utf8")
   }

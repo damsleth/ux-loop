@@ -25,10 +25,33 @@ function extractText(response) {
   return response?.choices?.[0]?.message?.content?.trim() || ""
 }
 
-export async function reviewWithOpenAi({ apiKey, imageDetail = "high", model, prompt, label, filePaths, openAiLoader, logger = console }) {
+function withTimeout(promise, timeoutMs, label) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise
+
+  let timer
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
+    }),
+  ]).finally(() => clearTimeout(timer))
+}
+
+export async function reviewWithOpenAi({
+  apiKey,
+  apiKeyEnv = "OPENAI_API_KEY",
+  imageDetail = "high",
+  model,
+  prompt,
+  label,
+  filePaths,
+  timeoutMs,
+  openAiLoader,
+  logger = console,
+}) {
   const normalizedApiKey = typeof apiKey === "string" ? apiKey.trim() : ""
   if (!normalizedApiKey) {
-    throw new Error("OPENAI_API_KEY is not set. Add it to your environment.")
+    throw new Error(`${apiKeyEnv} is not set. Add it to your environment.`)
   }
 
   for (const filePath of filePaths) {
@@ -50,13 +73,17 @@ export async function reviewWithOpenAi({ apiKey, imageDetail = "high", model, pr
   }
 
   const startedAt = Date.now()
-  const response = await client.chat.completions.create({
-    model,
-    messages: [
-      { role: "system", content: prompt },
-      { role: "user", content },
-    ],
-  })
+  const response = await withTimeout(
+    client.chat.completions.create({
+      model,
+      messages: [
+        { role: "system", content: prompt },
+        { role: "user", content },
+      ],
+    }),
+    timeoutMs,
+    `OpenAI review for "${label}"`
+  )
   logger?.log?.(`OpenAI completed for "${label}" in ${Date.now() - startedAt}ms`)
 
   const text = extractText(response)

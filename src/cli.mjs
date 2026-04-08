@@ -47,7 +47,7 @@ async function main() {
     }
 
     if (command === "shots") {
-      await runShots(workspaceCwd)
+      await runShots(args, workspaceCwd)
       return
     }
 

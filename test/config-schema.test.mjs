@@ -14,6 +14,9 @@ test("normalizeConfig applies defaults and resolves paths", () => {
   assert.deepEqual(config.capture.flowInventory, [])
   assert.deepEqual(config.capture.flowMapping, {})
   assert.equal(config.implement.autoCommit, false)
+  assert.equal(config.review.timeoutMs, 600000)
+  assert.equal(config.implement.timeoutMs, 900000)
+  assert.equal(config.output.verbose, false)
   assert.equal(config.paths.shotsDir, path.resolve("/tmp/example-project", ".uxl/shots"))
   assert.equal(config.paths.reportPath, path.resolve("/tmp/example-project", ".uxl/report.md"))
 })
@@ -74,6 +77,23 @@ test("normalizeConfig validates reasoning effort enums", () => {
   assert.throws(
     () => normalizeConfig({ review: { openai: { imageDetail: "ultra" } } }),
     /Invalid review\.openai\.imageDetail/
+  )
+})
+
+test("normalizeConfig validates timeout and output types", () => {
+  assert.throws(
+    () => normalizeConfig({ review: { timeoutMs: 0 } }),
+    /Invalid review\.timeoutMs/
+  )
+
+  assert.throws(
+    () => normalizeConfig({ implement: { timeoutMs: -1 } }),
+    /Invalid implement\.timeoutMs/
+  )
+
+  assert.throws(
+    () => normalizeConfig({ output: { verbose: "yes" } }),
+    /output\.verbose must be boolean/
   )
 })
 

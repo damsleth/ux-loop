@@ -25,6 +25,8 @@ Optional (only if using `uxl review --runner openai`):
 npm i openai
 ```
 
+`uxl` loads workspace `.env` and `.env.local` files before importing `uxl.config.mjs`. Existing shell env vars still win.
+
 Optional (only if using `review.runner = "copilot"` or `implement.runner = "copilot"`):
 
 - Install GitHub Copilot CLI and make sure `copilot` is on `PATH`.
@@ -109,14 +111,22 @@ export default defineUxlConfig({
   review: {
     runner: "codex", // codex | copilot | openai
     reasoningEffort: "medium", // low | medium | high | extraHigh
+    timeoutMs: 600000,
   },
   implement: {
     runner: "codex", // codex | copilot
     reasoningEffort: "medium", // low | medium | high | extraHigh
     target: "worktree",
+    autoCommit: false,
+    timeoutMs: 900000,
+  },
+  output: {
+    verbose: false,
   },
 })
 ```
+
+`output.verbose` controls whether full runner logs are echoed to the terminal. Logs are always written under `.uxl/logs`.
 
 ## Flows command group
 

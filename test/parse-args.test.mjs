@@ -45,6 +45,11 @@ test("parseReviewArgs parses --image-detail flags", () => {
   assert.equal(parseReviewArgs(["--image-detail", "low"]).imageDetail, "low")
 })
 
+test("parseReviewArgs rejects unknown flags and missing values", () => {
+  assert.throws(() => parseReviewArgs(["--nope"]), /Unknown flag/)
+  assert.throws(() => parseReviewArgs(["--runner"]), /Missing value/)
+})
+
 // --- parseImplementArgs ---
 
 test("parseImplementArgs returns empty object for no args", () => {
@@ -87,4 +92,9 @@ test("parseImplementArgs parses all flags together", () => {
   assert.equal(result.branch, "uxl-feat")
   assert.equal(result.model, "o3")
   assert.equal(result.reasoningEffort, "extraHigh")
+})
+
+test("parseImplementArgs rejects unknown flags and missing values", () => {
+  assert.throws(() => parseImplementArgs(["--bogus"]), /Unknown flag/)
+  assert.throws(() => parseImplementArgs(["--target"]), /Missing value/)
 })

@@ -49,6 +49,21 @@ test("reviewWithOpenAi fails early when api key is missing", async () => {
   )
 })
 
+test("reviewWithOpenAi mentions the configured api key env name", async () => {
+  await assert.rejects(
+    () =>
+      reviewWithOpenAi({
+        apiKey: "",
+        apiKeyEnv: "UXL_OPENAI_KEY",
+        model: "gpt-5",
+        prompt: "Review",
+        label: "Sample",
+        filePaths: [],
+      }),
+    /UXL_OPENAI_KEY is not set/
+  )
+})
+
 test("reviewWithOpenAi forwards configurable image detail", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-openai-detail-"))
   const pngPath = path.join(tempDir, "shot.png")
@@ -88,6 +103,45 @@ test("reviewWithOpenAi forwards configurable image detail", async () => {
 
     assert.equal(text, "- issue")
     assert.equal(capturedDetail, "low")
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true })
+  }
+})
+
+test("reviewWithOpenAi enforces timeout boundaries", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-openai-timeout-"))
+  const pngPath = path.join(tempDir, "shot.png")
+
+  fs.writeFileSync(
+    pngPath,
+    Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6360000002000154a24f5d0000000049454e44ae426082", "hex")
+  )
+
+  class HangingOpenAi {
+    constructor() {
+      this.chat = {
+        completions: {
+          create: async () => new Promise(() => {}),
+        },
+      }
+    }
+  }
+
+  try {
+    await assert.rejects(
+      () =>
+        reviewWithOpenAi({
+          apiKey: "test-key",
+          model: "gpt-5",
+          prompt: "Review",
+          label: "Sample",
+          filePaths: [pngPath],
+          timeoutMs: 10,
+          openAiLoader: async () => HangingOpenAi,
+          logger: { log() {}, warn() {}, error() {} },
+        }),
+      /OpenAI review for "Sample" timed out after 10ms/
+    )
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true })
   }

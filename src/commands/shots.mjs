@@ -21,17 +21,29 @@ function ensureFilesExist(groups) {
   }
 }
 
-export async function runShots(cwd = process.cwd()) {
-  const config = await loadConfig(cwd)
+export async function runShots(args = [], cwd = process.cwd(), runtime = {}) {
+  if (args.length > 0) {
+    throw new Error(`uxl shots does not accept arguments: ${args.join(" ")}`)
+  }
+
+  const load = runtime.loadConfig || loadConfig
+  const loggerFactory = runtime.createCommandLogger || createCommandLogger
+  const harnessFactory = runtime.createPlaywrightCaptureHarness || createPlaywrightCaptureHarness
+  const config = await load(cwd)
 
   assertFullFlowCoverage(config)
 
   fs.mkdirSync(config.paths.artifactsDir, { recursive: true })
   fs.mkdirSync(config.paths.shotsDir, { recursive: true })
   fs.mkdirSync(config.paths.logsDir, { recursive: true })
-  const logger = createCommandLogger({ scope: "shots", logsDir: config.paths.logsDir })
+  const logger = loggerFactory({
+    scope: "shots",
+    logsDir: config.paths.logsDir,
+    echoToConsole: config.output.verbose,
+  })
   logger.log(`Starting capture run in ${config.paths.root}`)
   logger.log(`Manifest output: ${config.paths.manifestPath}`)
+  console.log("Capturing screenshots...")
 
   try {
     let capture
@@ -41,7 +53,7 @@ export async function runShots(cwd = process.cwd()) {
         capture = resolveCaptureExport(adapterModule)
       } else {
         const playwrightConfig = config.capture.playwright || {}
-        capture = createPlaywrightCaptureHarness({
+        capture = harnessFactory({
           baseUrl: config.capture.baseUrl,
           timeoutMs: config.capture.timeoutMs,
           startCommand: playwrightConfig.startCommand,
@@ -72,6 +84,7 @@ export async function runShots(cwd = process.cwd()) {
     ensureFilesExist(groups)
     const manifest = writeManifest(config.paths.manifestPath, groups)
     logger.log(`Manifest written: ${config.paths.manifestPath} (${manifest.groups.length} groups)`)
+    console.log(`Capture complete. Manifest: ${config.paths.manifestPath}`)
   } catch (error) {
     logger.error(error instanceof Error ? error.message : String(error))
     throw error

@@ -1,6 +1,6 @@
 import { runCommand } from "../utils/process.mjs"
 
-export function runCodexImplement({ codexBin, model, reasoningEffort, workDir, prompt }) {
+export function runCodexImplement({ codexBin, model, reasoningEffort, timeoutMs, workDir, prompt }) {
   const args = [
     "exec",
     "--full-auto",
@@ -26,5 +26,6 @@ export function runCodexImplement({ codexBin, model, reasoningEffort, workDir, p
     input: prompt,
     stdio: ["pipe", "inherit", "inherit"],
     maxBuffer: 10 * 1024 * 1024,
+    timeoutMs,
   })
 }

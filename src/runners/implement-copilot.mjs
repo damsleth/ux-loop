@@ -1,6 +1,6 @@
 import { runCommand } from "../utils/process.mjs"
 
-export function runCopilotImplement({ copilotBin, model, workDir, prompt }) {
+export function runCopilotImplement({ copilotBin, model, timeoutMs, workDir, prompt }) {
   const args = [
     "--allow-all-tools",
     "--no-color",
@@ -22,5 +22,6 @@ export function runCopilotImplement({ copilotBin, model, workDir, prompt }) {
     stdio: ["pipe", "inherit", "inherit"],
     maxBuffer: 10 * 1024 * 1024,
     cwd: workDir,
+    timeoutMs,
   })
 }

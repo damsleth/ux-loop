@@ -14,3 +14,10 @@ test("runCommandAsync rejects on non-zero exit", async () => {
     /failed: boom/
   )
 })
+
+test("runCommandAsync rejects on timeout", async () => {
+  await assert.rejects(
+    () => runCommandAsync(process.execPath, ["-e", "setTimeout(() => {}, 1000)"], { timeoutMs: 10 }),
+    /timed out after 10ms/
+  )
+})
