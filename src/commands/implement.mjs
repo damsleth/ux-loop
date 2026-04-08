@@ -129,6 +129,10 @@ export async function runImplement(args = [], cwd = process.cwd(), runtime = {})
   const runCodex = runtime.runCodexImplement || runCodexImplement
   const runCopilot = runtime.runCopilotImplement || runCopilotImplement
   const runSyncCommand = runtime.runCommand || runCommand
+  if (overrides.target !== undefined && !["current", "branch", "worktree"].includes(overrides.target)) {
+    throw new Error(`Invalid --target: "${overrides.target}". Allowed: current, branch, worktree.`)
+  }
+
   const config = await load(cwd)
   const runner = (config.implement.runner || "codex").toLowerCase()
   validateReasoningEffort(overrides.reasoningEffort, "--reasoning-effort")

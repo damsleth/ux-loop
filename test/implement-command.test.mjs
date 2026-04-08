@@ -40,6 +40,44 @@ test("resolveReportOutputPath uses millisecond precision to avoid collisions", (
   assert.notEqual(left, right)
 })
 
+test("runImplement rejects invalid --target with enum-style error before any git side effects", async () => {
+  const resolveTargetCalled = { called: false }
+
+  await assert.rejects(
+    () =>
+      runImplement(["--target", "banana"], process.cwd(), {
+        loadConfig: async () => ({
+          paths: { root: process.cwd(), reportPath: "/nonexistent/report.md" },
+          implement: {
+            runner: "codex",
+            target: "current",
+            autoCommit: false,
+            timeoutMs: 1000,
+            codex: { bin: "codex" },
+            copilot: { bin: "copilot" },
+          },
+        }),
+        assertCommandAvailable: () => {},
+        resolveTarget: () => {
+          resolveTargetCalled.called = true
+          return { workDir: process.cwd(), branchName: "main", summary: "" }
+        },
+        runCodexImplement: () => {},
+        runCommand: () => ({ stdout: "" }),
+      }),
+    (err) => {
+      assert.ok(err instanceof Error)
+      assert.ok(err.message.includes("banana"), `expected "banana" in: ${err.message}`)
+      assert.ok(
+        err.message.includes("current") && err.message.includes("branch") && err.message.includes("worktree"),
+        `expected allowed values in: ${err.message}`
+      )
+      assert.equal(resolveTargetCalled.called, false, "resolveTarget must not be called for invalid target")
+      return true
+    }
+  )
+})
+
 test("runImplement auto-commits when enabled", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-implement-auto-commit-"))
   const reportPath = path.join(dir, "report.md")

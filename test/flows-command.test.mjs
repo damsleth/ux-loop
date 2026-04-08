@@ -148,3 +148,43 @@ test("runFlows map accepts interactive confirmation prompt", async () => {
   const { raw } = await loadRawConfig(cwd)
   assert.deepEqual(raw.capture.flowMapping.home, ["alternate"])
 })
+
+test("runFlows map rejects empty --to value and does not write config", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-flows-map-empty-"))
+  installUxlStub(cwd)
+  writeBaseConfig(cwd)
+
+  await assert.rejects(
+    () => runFlows(["map", "--id", "home", "--to", ",", "--force"], cwd),
+    /--to must resolve to at least one capture flow name/
+  )
+
+  const { raw } = await loadRawConfig(cwd)
+  assert.deepEqual(raw.capture.flowMapping.home, ["home"])
+})
+
+test("runFlows map trims surrounding whitespace from comma-separated --to values", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-flows-map-trim-"))
+  installUxlStub(cwd)
+  writeBaseConfig(cwd)
+
+  await runFlows(["map", "--id", "home", "--to", " foo , bar ", "--force"], cwd)
+
+  const { raw } = await loadRawConfig(cwd)
+  assert.deepEqual(raw.capture.flowMapping.home, ["foo", "bar"])
+})
+
+test("runFlows map with valid multi-value --to works with interactive confirmation", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-flows-map-multi-prompt-"))
+  installUxlStub(cwd)
+  writeBaseConfig(cwd)
+
+  await runFlows(
+    ["map", "--id", "home", "--to", "flowA, flowB"],
+    cwd,
+    { prompt: async () => "yes" }
+  )
+
+  const { raw } = await loadRawConfig(cwd)
+  assert.deepEqual(raw.capture.flowMapping.home, ["flowA", "flowB"])
+})

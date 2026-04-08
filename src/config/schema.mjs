@@ -273,6 +273,7 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
       flowInventory: merged.capture.flowInventory,
       flowMapping: merged.capture.flowMapping,
       playwrightFlows: merged.capture.playwright?.flows,
+      runner: merged.capture.runner,
     })
 
     if (!coverage.complete) {

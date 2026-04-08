@@ -52,6 +52,35 @@ test("resolveTarget sanitizes special characters out of branch names", () => {
   assert.ok(result.branchName.length > 0)
 })
 
+test("resolveTarget throws on invalid target value with enum-style error", () => {
+  assert.throws(
+    () =>
+      resolveTarget({
+        repoRoot: REPO_ROOT,
+        implementConfig: BASE_CONFIG,
+        overrides: { target: "banana" },
+      }),
+    (err) => {
+      assert.ok(err instanceof Error)
+      assert.ok(err.message.includes("banana"), `expected "banana" in: ${err.message}`)
+      assert.ok(
+        err.message.includes("current") && err.message.includes("branch") && err.message.includes("worktree"),
+        `expected allowed values in: ${err.message}`
+      )
+      return true
+    }
+  )
+})
+
+test("resolveTarget(current) still works after validation", () => {
+  const result = resolveTarget({
+    repoRoot: REPO_ROOT,
+    implementConfig: BASE_CONFIG,
+    overrides: { target: "current" },
+  })
+  assert.equal(result.workDir, REPO_ROOT)
+})
+
 test("resolveTarget throws when path is not inside a git repository", () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-not-git-"))
   try {

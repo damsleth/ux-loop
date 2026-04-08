@@ -149,3 +149,34 @@ test("normalizeConfig accepts complete onboarding when coverage is 100%", () => 
 
   assert.equal(config.capture.onboarding.status, "complete")
 })
+
+test("normalizeConfig accepts custom runner with complete onboarding when all required entries are mapped", () => {
+  const config = normalizeConfig({
+    capture: {
+      runner: "custom",
+      adapter: "./uxl.capture.mjs",
+      onboarding: { status: "complete" },
+      flowInventory: [{ id: "home", label: "Home", required: true }],
+      flowMapping: { home: ["home-custom"] },
+    },
+  })
+
+  assert.equal(config.capture.onboarding.status, "complete")
+  assert.equal(config.capture.runner, "custom")
+})
+
+test("normalizeConfig rejects custom runner with complete onboarding when required entries are unmapped", () => {
+  assert.throws(
+    () =>
+      normalizeConfig({
+        capture: {
+          runner: "custom",
+          adapter: "./uxl.capture.mjs",
+          onboarding: { status: "complete" },
+          flowInventory: [{ id: "home", label: "Home", required: true }],
+          flowMapping: {},
+        },
+      }),
+    /cannot be "complete"/
+  )
+})

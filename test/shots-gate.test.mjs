@@ -102,3 +102,38 @@ test("runShots proceeds when flow coverage is complete", async () => {
     assert.ok(logFiles.length > 0, "expected shots log file in .uxl/logs")
   })
 })
+
+test("runShots succeeds past the coverage gate for a custom runner with a stub adapter", async () => {
+  await withTempCwd(async (cwd) => {
+    installUxlStub(cwd)
+    fs.writeFileSync(
+      path.join(cwd, "uxl.capture.mjs"),
+      `import fs from \"fs\"\n` +
+        `import path from \"path\"\n` +
+        `export async function captureUx(context) {\n` +
+        `  const file = path.join(context.shotsDir, \"home-desktop.png\")\n` +
+        `  fs.mkdirSync(context.shotsDir, { recursive: true })\n` +
+        `  fs.writeFileSync(file, \"ok\")\n` +
+        `  return [{ label: \"Home\", files: [file] }]\n` +
+        `}\n`,
+      "utf8"
+    )
+
+    writeConfigFile(getConfigPath(cwd), {
+      capture: {
+        runner: "custom",
+        adapter: "./uxl.capture.mjs",
+        onboarding: { status: "complete" },
+        flowInventory: [{ id: "home", label: "Home", path: "/", required: true }],
+        flowMapping: { home: ["home-custom-key"] },
+      },
+      review: { runner: "codex" },
+      implement: { target: "worktree" },
+    })
+
+    await runShots()
+
+    const manifestPath = path.join(cwd, ".uxl", "shots", "manifest.json")
+    assert.equal(fs.existsSync(manifestPath), true)
+  })
+})

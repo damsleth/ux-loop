@@ -30,9 +30,6 @@ export async function reviewWithCodex({
     if (!fs.existsSync(filePath)) {
       throw new Error(`Missing screenshot: ${filePath}`)
     }
-    if (filePath.includes(",")) {
-      throw new Error(`Image path contains comma and cannot be passed as CSV list: ${filePath}`)
-    }
   }
 
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-review-"))
@@ -55,7 +52,10 @@ export async function reviewWithCodex({
   if (reasoningEffort) {
     args.push("-c", `model_reasoning_effort=${reasoningEffort}`)
   }
-  args.push("--image", filePaths.join(","), "-")
+  for (const filePath of filePaths) {
+    args.push("--image", filePath)
+  }
+  args.push("-")
 
   const fullPrompt = `${prompt}\n\nReview these screenshots as one group: ${label}.`
   logger?.log?.(`Codex command: ${formatCommand(codexBin, args)}`)

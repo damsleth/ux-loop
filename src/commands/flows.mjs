@@ -210,10 +210,16 @@ async function runMap(cwd, parsedFlags, runtime = {}) {
     }
   }
 
-  raw.capture.flowMapping[id] = mappedTo
+  const resolvedFlowNames = mappedTo
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean)
+
+  if (resolvedFlowNames.length === 0) {
+    throw new Error(`--to must resolve to at least one capture flow name. Got: "${mappedTo}"`)
+  }
+
+  raw.capture.flowMapping[id] = resolvedFlowNames
 
   const report = syncOnboardingStatus(raw.capture)
   writeConfigFile(configPath, raw)

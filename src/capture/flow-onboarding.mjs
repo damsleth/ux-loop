@@ -273,27 +273,37 @@ function routeFromAppPage(relativePath) {
 export function discoverTopLevelRoutes(cwd = process.cwd()) {
   const routes = new Set(["/"])
 
-  const pagesDir = path.join(cwd, "src", "pages")
-  if (fs.existsSync(pagesDir) && fs.statSync(pagesDir).isDirectory()) {
-    walkFiles(pagesDir, (filePath) => {
-      if (!ROUTE_FILE_EXTENSIONS.has(path.extname(filePath))) return
-      const relative = path.relative(pagesDir, filePath)
-      const route = routeFromPagesFile(relative)
-      if (route) routes.add(route)
-    })
+  const pagesDirs = [
+    path.join(cwd, "pages"),
+    path.join(cwd, "src", "pages"),
+  ]
+  for (const pagesDir of pagesDirs) {
+    if (fs.existsSync(pagesDir) && fs.statSync(pagesDir).isDirectory()) {
+      walkFiles(pagesDir, (filePath) => {
+        if (!ROUTE_FILE_EXTENSIONS.has(path.extname(filePath))) return
+        const relative = path.relative(pagesDir, filePath)
+        const route = routeFromPagesFile(relative)
+        if (route) routes.add(route)
+      })
+    }
   }
 
-  const appDir = path.join(cwd, "app")
-  if (fs.existsSync(appDir) && fs.statSync(appDir).isDirectory()) {
-    walkFiles(appDir, (filePath) => {
-      const basename = path.basename(filePath)
-      if (!basename.startsWith("page.")) return
-      if (!ROUTE_FILE_EXTENSIONS.has(path.extname(filePath))) return
+  const appDirs = [
+    path.join(cwd, "app"),
+    path.join(cwd, "src", "app"),
+  ]
+  for (const appDir of appDirs) {
+    if (fs.existsSync(appDir) && fs.statSync(appDir).isDirectory()) {
+      walkFiles(appDir, (filePath) => {
+        const basename = path.basename(filePath)
+        if (!basename.startsWith("page.")) return
+        if (!ROUTE_FILE_EXTENSIONS.has(path.extname(filePath))) return
 
-      const relative = path.relative(appDir, filePath)
-      const route = routeFromAppPage(relative)
-      if (route) routes.add(route)
-    })
+        const relative = path.relative(appDir, filePath)
+        const route = routeFromAppPage(relative)
+        if (route) routes.add(route)
+      })
+    }
   }
 
   return [...routes].sort()
@@ -395,12 +405,14 @@ export function buildFlowScaffold(cwd = process.cwd()) {
   }
 }
 
-export function evaluateFlowCoverage({ flowInventory, flowMapping, playwrightFlows }) {
+export function evaluateFlowCoverage({ flowInventory, flowMapping, playwrightFlows, runner }) {
   const inventory = Array.isArray(flowInventory)
     ? flowInventory.map((entry) => ({ ...entry, required: entry?.required !== false }))
     : []
 
   const mapping = isObject(flowMapping) ? flowMapping : {}
+
+  const isCustomRunner = runner === "custom"
 
   const flowNames = new Set(
     Array.isArray(playwrightFlows)
@@ -427,13 +439,15 @@ export function evaluateFlowCoverage({ flowInventory, flowMapping, playwrightFlo
       continue
     }
 
-    const invalid = mapped.filter((flowName) => !flowNames.has(flowName))
-    if (invalid.length > 0) {
-      invalidMappedFlowNames.push({
-        inventoryId: entry.id,
-        flowNames: invalid,
-      })
-      continue
+    if (!isCustomRunner) {
+      const invalid = mapped.filter((flowName) => !flowNames.has(flowName))
+      if (invalid.length > 0) {
+        invalidMappedFlowNames.push({
+          inventoryId: entry.id,
+          flowNames: invalid,
+        })
+        continue
+      }
     }
 
     mappedRequiredIds.push(entry.id)
@@ -514,6 +528,7 @@ export function assertFullFlowCoverage(config) {
     flowInventory: capture.flowInventory,
     flowMapping: capture.flowMapping,
     playwrightFlows: capture.playwright?.flows,
+    runner: capture.runner,
   })
 
   if (!report.complete) {

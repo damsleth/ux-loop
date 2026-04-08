@@ -28,6 +28,8 @@ function branchExists(repoRoot, name) {
   }
 }
 
+const VALID_TARGETS = ["current", "branch", "worktree"]
+
 export function resolveTarget({ repoRoot, implementConfig, overrides = {} }) {
   runCommand("git", ["rev-parse", "--is-inside-work-tree"], { cwd: repoRoot })
 
@@ -35,6 +37,10 @@ export function resolveTarget({ repoRoot, implementConfig, overrides = {} }) {
   const repoName = path.basename(repoRoot)
   const repoParent = path.dirname(repoRoot)
   const target = overrides.target || implementConfig.target
+
+  if (!VALID_TARGETS.includes(target)) {
+    throw new Error(`Invalid implement.target: "${target}". Allowed: current, branch, worktree.`)
+  }
 
   const branchNameRaw =
     overrides.branch ||
