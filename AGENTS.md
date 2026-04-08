@@ -25,10 +25,11 @@ When a review produces actionable findings:
 
 ### 2. Track work in `TODO.md`
 
-- Add one corresponding checkbox item to the root `TODO.md` for each plan.
-- The root `TODO.md` is the authoritative task list.
+- Add one corresponding checkbox item to `.plans/TODO.md` for each plan.
+- `.plans/TODO.md` is the authoritative task list.
 - Each todo should link to its plan file in `.plans/`.
 - Keep todo items concrete and implementation-oriented.
+- Keep the todo tracker alongside the plans in `.plans/`, not at the repo root.
 
 ### 3. Execute one plan cleanly
 
@@ -43,7 +44,7 @@ When working a todo item:
 
 When a planned improvement is complete:
 
-- Remove its item from the root `TODO.md`.
+- Remove its item from `.plans/TODO.md`.
 - Move the plan file from `.plans/` to `.plans/done/`.
 - Commit the code after the implementation is verified.
 
@@ -79,8 +80,10 @@ If the work is only partially complete:
 
 - Active plans live in `.plans/`.
 - Completed plans live in `.plans/done/`.
-- `TODO.md` at the repo root tracks active work only.
-- Do not leave completed items in `TODO.md`.
+- `.plans/` is local-only planning state and should not be committed unless the user explicitly asks for that.
+- The active todo tracker lives at `.plans/TODO.md`.
+- Do not treat a repo-root `TODO.md` as the source of truth for this workflow.
+- Do not leave completed items in `.plans/TODO.md`.
 - Do not leave completed plans in `.plans/`.
 
 ## Commit Expectations
@@ -88,6 +91,8 @@ If the work is only partially complete:
 - Commit after completing and verifying a plan.
 - Keep commit messages specific to the completed improvement.
 - Do not bundle multiple finished plans into one commit unless the work is tightly coupled.
+- When pushing a meaningful user-visible or behavior-changing update, increment the package version.
+- Default to a patch bump unless the user specifies a different version change.
 
 ## Communication
 
