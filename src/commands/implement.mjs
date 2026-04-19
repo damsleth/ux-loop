@@ -60,6 +60,13 @@ function createPrompt() {
   }
 }
 
+function readRepoState(repoRoot, runSyncCommand) {
+  return {
+    head: runSyncCommand("git", ["rev-parse", "HEAD"], { cwd: repoRoot }).stdout.trim(),
+    branch: runSyncCommand("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repoRoot }).stdout.trim(),
+  }
+}
+
 function readReport(reportPath) {
   const resolvedReportPath = resolveReportInputPath(reportPath)
 
@@ -281,15 +288,33 @@ async function resolvePrompt({ overrides, config, reportMarkdown, rootDir }) {
   })
 }
 
-function createSnapshotMetadata({ repoRoot, prepared, targetMode, runSyncCommand }) {
+function createSnapshotMetadata({ repoRoot, prepared, targetMode, initialRepoState, runSyncCommand }) {
+  const repoState = initialRepoState || readRepoState(repoRoot, runSyncCommand)
   return {
     createdAt: new Date().toISOString(),
     repoRoot,
-    head: runSyncCommand("git", ["rev-parse", "HEAD"], { cwd: repoRoot }).stdout.trim(),
-    originalBranch: runSyncCommand("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repoRoot }).stdout.trim(),
+    head: repoState.head,
+    originalBranch: repoState.branch,
     targetMode,
     branchName: prepared.branchName,
     workDir: prepared.workDir,
+  }
+}
+
+function warnCleanupFailure(error) {
+  const message = error instanceof Error ? error.message : String(error)
+  console.warn(`Warning: ${message}`)
+}
+
+function cleanupFailedBranchTarget({ repoRoot, initialRepoState, prepared, runSyncCommand }) {
+  const currentHead = runSyncCommand("git", ["rev-parse", "HEAD"], { cwd: repoRoot }).stdout.trim()
+  const resetTarget = currentHead || initialRepoState.head
+
+  runSyncCommand("git", ["reset", "--hard", resetTarget], { cwd: repoRoot, stdio: "inherit" })
+  runSyncCommand("git", ["switch", initialRepoState.branch], { cwd: repoRoot, stdio: "inherit" })
+
+  if (prepared.branchName && currentHead === initialRepoState.head) {
+    runSyncCommand("git", ["branch", "-d", prepared.branchName], { cwd: repoRoot })
   }
 }
 
@@ -350,11 +375,15 @@ async function generatePatch({
       prepared,
     }
   } finally {
-    cleanupTarget({
-      repoRoot: config.paths.root,
-      workDir: prepared.workDir,
-      branchName: prepared.branchName,
-    })
+    try {
+      cleanupTarget({
+        repoRoot: config.paths.root,
+        workDir: prepared.workDir,
+        branchName: prepared.branchName,
+      })
+    } catch (cleanupError) {
+      warnCleanupFailure(cleanupError)
+    }
   }
 }
 
@@ -390,6 +419,7 @@ export async function runImplement(args = [], cwd = process.cwd(), runtime = {})
   const bin = runner === "copilot" ? config.implement.copilot.bin : config.implement.codex.bin
   ensureCommand(bin)
   ensureInsideGitRepo(config.paths.root, runSyncCommand)
+  const initialRepoState = readRepoState(config.paths.root, runSyncCommand)
 
   const reportMarkdown = readReport(config.paths.reportPath)
   const prompt = await resolvePrompt({
@@ -488,14 +518,16 @@ export async function runImplement(args = [], cwd = process.cwd(), runtime = {})
   let snapshotPath = null
 
   try {
+    const snapshotMetadata = createSnapshotMetadata({
+      repoRoot: config.paths.root,
+      prepared,
+      targetMode,
+      initialRepoState,
+      runSyncCommand,
+    })
     snapshotPath = writeSnapshotFile(
       config.paths.snapshotsDir || path.join(config.paths.root, ".uxl", "snapshots"),
-      createSnapshotMetadata({
-        repoRoot: config.paths.root,
-        prepared,
-        targetMode,
-        runSyncCommand,
-      })
+      snapshotMetadata
     )
 
     console.log(prepared.summary)
@@ -517,82 +549,87 @@ export async function runImplement(args = [], cwd = process.cwd(), runtime = {})
         prompt,
       })
     }
-  } catch (error) {
+    const changedFiles = getChangedFiles(prepared.workDir, runSyncCommand)
+    const diffStats = collectDiffStats(prepared.workDir, runSyncCommand)
+    const scopeValidation = validateScopeAgainstFiles(changedFiles, scope)
+    for (const message of [...scopeValidation.violations, ...scopeValidation.warnings]) {
+      console.warn(message)
+    }
+    if (overrides.strict && scopeValidation.violations.length > 0) {
+      throw new Error(`Scope validation failed for ${scope}.`)
+    }
+
+    let committed = false
+    if (config.implement.autoCommit) {
+      committed = commitImplementedChanges(prepared.workDir, runSyncCommand)
+    }
+
+    const reportJsonPath = writeArtifact({
+      dir: config.paths.reportsDir || path.join(config.paths.root, ".uxl", "reports"),
+      prefix: "uxl_report",
+      payload: {
+        timestamp: new Date().toISOString(),
+        command: "implement",
+        status: "success",
+        duration_ms: Date.now() - startedAt,
+        model: overrides.model || config.implement.model || null,
+        scope,
+        iteration: 1,
+        steps: [
+          {
+            step: "implement",
+            duration_ms: Date.now() - startedAt,
+            files_changed: diffStats.filesChanged,
+            lines_added: diffStats.linesAdded,
+            lines_removed: diffStats.linesRemoved,
+            files: diffStats.files,
+            scope_validation: scopeValidation,
+            snapshot_path: snapshotPath,
+          },
+        ],
+      },
+    })
+
+    console.log("UX implementation run completed.")
+    if (config.implement.autoCommit) {
+      console.log(committed ? "Changes committed automatically." : "Auto-commit enabled, but there were no changes to commit.")
+    }
     if (targetMode === "worktree") {
-      try {
+      console.log(`Worktree path: ${prepared.workDir}`)
+      console.log(`Branch: ${prepared.branchName}`)
+    }
+
+    return {
+      status: "success",
+      targetMode,
+      scope,
+      workDir: prepared.workDir,
+      branchName: prepared.branchName,
+      committed,
+      snapshotPath,
+      reportJsonPath,
+      diffStats,
+      scopeValidation,
+    }
+  } catch (error) {
+    try {
+      if (targetMode === "worktree") {
         cleanupTarget({
           repoRoot: config.paths.root,
           workDir: prepared.workDir,
           branchName: prepared.branchName,
         })
-      } catch (cleanupError) {
-        const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
-        console.warn(`Warning: ${message}`)
+      } else if (targetMode === "branch") {
+        cleanupFailedBranchTarget({
+          repoRoot: config.paths.root,
+          initialRepoState,
+          prepared,
+          runSyncCommand,
+        })
       }
+    } catch (cleanupError) {
+      warnCleanupFailure(cleanupError)
     }
     throw error
-  }
-
-  const changedFiles = getChangedFiles(prepared.workDir, runSyncCommand)
-  const diffStats = collectDiffStats(prepared.workDir, runSyncCommand)
-  const scopeValidation = validateScopeAgainstFiles(changedFiles, scope)
-  for (const message of [...scopeValidation.violations, ...scopeValidation.warnings]) {
-    console.warn(message)
-  }
-  if (overrides.strict && scopeValidation.violations.length > 0) {
-    throw new Error(`Scope validation failed for ${scope}.`)
-  }
-
-  let committed = false
-  if (config.implement.autoCommit) {
-    committed = commitImplementedChanges(prepared.workDir, runSyncCommand)
-  }
-
-  const reportJsonPath = writeArtifact({
-    dir: config.paths.reportsDir || path.join(config.paths.root, ".uxl", "reports"),
-    prefix: "uxl_report",
-    payload: {
-      timestamp: new Date().toISOString(),
-      command: "implement",
-      status: "success",
-      duration_ms: Date.now() - startedAt,
-      model: overrides.model || config.implement.model || null,
-      scope,
-      iteration: 1,
-      steps: [
-        {
-          step: "implement",
-          duration_ms: Date.now() - startedAt,
-          files_changed: diffStats.filesChanged,
-          lines_added: diffStats.linesAdded,
-          lines_removed: diffStats.linesRemoved,
-          files: diffStats.files,
-          scope_validation: scopeValidation,
-          snapshot_path: snapshotPath,
-        },
-      ],
-    },
-  })
-
-  console.log("UX implementation run completed.")
-  if (config.implement.autoCommit) {
-    console.log(committed ? "Changes committed automatically." : "Auto-commit enabled, but there were no changes to commit.")
-  }
-  if (targetMode === "worktree") {
-    console.log(`Worktree path: ${prepared.workDir}`)
-    console.log(`Branch: ${prepared.branchName}`)
-  }
-
-  return {
-    status: "success",
-    targetMode,
-    scope,
-    workDir: prepared.workDir,
-    branchName: prepared.branchName,
-    committed,
-    snapshotPath,
-    reportJsonPath,
-    diffStats,
-    scopeValidation,
   }
 }

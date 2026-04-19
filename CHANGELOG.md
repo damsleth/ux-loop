@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.4 - 2026-04-19
+
+- Fixed `paths.root` normalization so relative roots resolve from the config file directory instead of the invocation cwd, and hardened config merging to avoid shared nested defaults.
+- Fixed `uxl rollback` for `current` snapshots to require a clean working tree before `git reset --hard`, and removed the stale `stashRef` rollback path.
+- Fixed branch-target failure cleanup so failed `uxl implement --target branch` runs restore the original branch and delete disposable generated branches.
+- Fixed `uxl diff` cleanup so worktree cleanup warnings no longer mask the primary runner failure.
+
 ## 1.1.3 - 2026-04-19
 
 - Simplified implement safety around the clean-worktree assumption: `current` and `branch` targets now fail fast on dirty repos instead of using stash-based carry-over.

@@ -231,6 +231,127 @@ test("runImplement rejects dirty branch target before switching branches", async
   }
 })
 
+test("runImplement restores the original branch and deletes empty generated branches on branch-target failure", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-branch-failure-cleanup-"))
+  const reportPath = path.join(dir, "report.md")
+  fs.writeFileSync(reportPath, "# report", "utf8")
+
+  const commands = []
+  let currentBranch = "main"
+
+  try {
+    await assert.rejects(
+      () =>
+        runImplement(["--target", "branch"], dir, {
+          loadConfig: async () => ({
+            paths: { root: dir, reportPath, snapshotsDir: path.join(dir, ".uxl", "snapshots") },
+            implement: {
+              runner: "codex",
+              target: "worktree",
+              autoCommit: false,
+              timeoutMs: 1000,
+              codex: { bin: "codex" },
+              copilot: { bin: "copilot" },
+            },
+          }),
+          assertCommandAvailable: () => {},
+          resolveTarget: () => {
+            currentBranch = "uxl-branch"
+            return {
+              workDir: dir,
+              branchName: "uxl-branch",
+              summary: "Target: branch uxl-branch in current working tree",
+            }
+          },
+          runCodexImplement: () => {
+            throw new Error("runner failed")
+          },
+          runCommand: (_cmd, args) => {
+            commands.push(args.join(" "))
+            const key = args.join(" ")
+            if (key === "rev-parse --is-inside-work-tree") return { stdout: "true\n" }
+            if (key === "rev-parse HEAD") return { stdout: "abc123\n" }
+            if (key === "rev-parse --abbrev-ref HEAD") return { stdout: `${currentBranch}\n` }
+            if (key === "status --porcelain") return { stdout: "" }
+            if (key === "switch main") {
+              currentBranch = "main"
+              return { stdout: "" }
+            }
+            return { stdout: "" }
+          },
+        }),
+      /runner failed/
+    )
+
+    assert.ok(commands.includes("reset --hard abc123"))
+    assert.ok(commands.includes("switch main"))
+    assert.ok(commands.includes("branch -d uxl-branch"))
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("runImplement restores the original branch after strict scope failures in branch mode", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-branch-strict-cleanup-"))
+  const reportPath = path.join(dir, "report.md")
+  fs.writeFileSync(reportPath, "# report", "utf8")
+
+  const commands = []
+  let currentBranch = "main"
+
+  try {
+    await assert.rejects(
+      () =>
+        runImplement(["--target", "branch", "--strict"], dir, {
+          loadConfig: async () => ({
+            paths: { root: dir, reportPath, snapshotsDir: path.join(dir, ".uxl", "snapshots") },
+            implement: {
+              runner: "codex",
+              target: "worktree",
+              scope: "layout-safe",
+              autoCommit: false,
+              timeoutMs: 1000,
+              codex: { bin: "codex" },
+              copilot: { bin: "copilot" },
+            },
+          }),
+          assertCommandAvailable: () => {},
+          resolveTarget: () => {
+            currentBranch = "uxl-branch"
+            return {
+              workDir: dir,
+              branchName: "uxl-branch",
+              summary: "Target: branch uxl-branch in current working tree",
+            }
+          },
+          runCodexImplement: () => {},
+          runCommand: (_cmd, args) => {
+            commands.push(args.join(" "))
+            const key = args.join(" ")
+            if (key === "rev-parse --is-inside-work-tree") return { stdout: "true\n" }
+            if (key === "rev-parse HEAD") return { stdout: "abc123\n" }
+            if (key === "rev-parse --abbrev-ref HEAD") return { stdout: `${currentBranch}\n` }
+            if (key === "status --porcelain") return { stdout: "" }
+            if (key === "switch main") {
+              currentBranch = "main"
+              return { stdout: "" }
+            }
+            if (key === "diff --name-only HEAD --") return { stdout: "src/app.js\n" }
+            if (key === "diff --numstat HEAD --") return { stdout: "1\t0\tsrc/app.js\n" }
+            if (key === "ls-files --others --exclude-standard") return { stdout: "" }
+            return { stdout: "" }
+          },
+        }),
+      /Scope validation failed/
+    )
+
+    assert.ok(commands.includes("switch main"))
+    assert.ok(commands.includes("branch -d uxl-branch"))
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test("runImplement fails hard when not inside a git repo", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-nogit-"))
   const reportPath = path.join(dir, "report.md")
@@ -426,6 +547,58 @@ test("runImplement diff-only prepares untracked files so patches include additio
     assert.ok(commands.includes("add -N -- src/new-file.js"))
     assert.deepEqual(result.diffStats.files, ["src/new-file.js"])
   } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("runImplement diff-only preserves runner errors when cleanup also fails", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-diff-cleanup-warning-"))
+  const reportPath = path.join(dir, "report.md")
+  fs.writeFileSync(reportPath, "# report", "utf8")
+
+  const warnings = []
+  const originalWarn = console.warn
+  console.warn = (message) => warnings.push(String(message))
+
+  try {
+    await assert.rejects(
+      () =>
+        runImplement(["--diff-only"], dir, {
+          loadConfig: async () => ({
+            paths: { root: dir, reportPath, diffsDir: path.join(dir, ".uxl", "diffs") },
+            implement: {
+              runner: "codex",
+              target: "worktree",
+              autoCommit: false,
+              timeoutMs: 1000,
+              codex: { bin: "codex" },
+              copilot: { bin: "copilot" },
+            },
+          }),
+          assertCommandAvailable: () => {},
+          resolveTarget: () => ({ workDir: dir, branchName: "uxl-diff", summary: "Target: worktree" }),
+          cleanupWorktreeTarget: () => {
+            throw new Error("cleanup failed")
+          },
+          runCodexImplement: () => {
+            throw new Error("runner failed")
+          },
+          runCommand: (_cmd, args) => {
+            const key = args.join(" ")
+            if (key === "rev-parse --is-inside-work-tree") return { stdout: "true\n" }
+            if (key === "rev-parse HEAD") return { stdout: "abc123\n" }
+            if (key === "rev-parse --abbrev-ref HEAD") return { stdout: "main\n" }
+            if (key === "status --porcelain") return { stdout: "" }
+            if (key === "ls-files --others --exclude-standard") return { stdout: "" }
+            return { stdout: "" }
+          },
+        }),
+      /runner failed/
+    )
+
+    assert.ok(warnings.some((message) => message.includes("cleanup failed")))
+  } finally {
+    console.warn = originalWarn
     fs.rmSync(dir, { recursive: true, force: true })
   }
 })
