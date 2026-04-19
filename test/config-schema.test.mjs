@@ -106,6 +106,29 @@ test("normalizeConfig resolves capture adapter path when provided", () => {
   assert.equal(config.capture.adapter, path.resolve("/tmp/workspace", "./uxl.capture.mjs"))
 })
 
+test("normalizeConfig resolves relative paths.root from the config directory", () => {
+  const config = normalizeConfig(
+    {
+      paths: { root: "./apps/storefront" },
+    },
+    "/tmp/monorepo/uxl.config.mjs"
+  )
+
+  assert.equal(config.paths.root, path.resolve("/tmp/monorepo", "./apps/storefront"))
+  assert.equal(config.paths.shotsDir, path.resolve("/tmp/monorepo/apps/storefront", ".uxl/shots"))
+})
+
+test("normalizeConfig keeps absolute paths.root unchanged", () => {
+  const config = normalizeConfig(
+    {
+      paths: { root: "/srv/project" },
+    },
+    "/tmp/monorepo/uxl.config.mjs"
+  )
+
+  assert.equal(config.paths.root, "/srv/project")
+})
+
 test("normalizeConfig rejects unknown mapped flow names", () => {
   assert.throws(
     () =>

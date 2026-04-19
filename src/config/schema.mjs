@@ -97,14 +97,30 @@ function isObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
+function cloneValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => cloneValue(entry))
+  }
+
+  if (isObject(value)) {
+    const cloned = {}
+    for (const [key, nestedValue] of Object.entries(value)) {
+      cloned[key] = cloneValue(nestedValue)
+    }
+    return cloned
+  }
+
+  return value
+}
+
 function mergeObjects(base, overrides) {
-  if (!isObject(overrides)) return { ...base }
-  const merged = { ...base }
+  const merged = cloneValue(base)
+  if (!isObject(overrides)) return merged
   for (const [key, value] of Object.entries(overrides)) {
     if (isObject(value) && isObject(base[key])) {
       merged[key] = mergeObjects(base[key], value)
     } else {
-      merged[key] = value
+      merged[key] = cloneValue(value)
     }
   }
   return merged
@@ -232,7 +248,9 @@ function validatePlaywrightFlowNames(merged, configFilePath) {
 }
 
 export function normalizeConfig(input, configFilePath = path.resolve(process.cwd(), "uxl.config.mjs")) {
-  const root = resolvePath(process.cwd(), input?.paths?.root || DEFAULTS.paths.root)
+  const configDir = configFilePath ? path.dirname(configFilePath) : process.cwd()
+  const inputPaths = input?.paths || {}
+  const root = resolvePath(configDir, inputPaths.root || DEFAULTS.paths.root)
   const merged = mergeObjects(DEFAULTS, input || {})
 
   validateEnum(merged.capture.runner, ["playwright", "custom"], "capture.runner")
@@ -330,14 +348,14 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
   }
 
   merged.paths.root = root
-  merged.paths.artifactsDir = resolvePath(root, merged.paths.artifactsDir)
-  merged.paths.shotsDir = resolvePath(root, merged.paths.shotsDir)
-  merged.paths.manifestPath = resolvePath(root, merged.paths.manifestPath)
-  merged.paths.reportPath = resolvePath(root, merged.paths.reportPath)
-  merged.paths.logsDir = resolvePath(root, merged.paths.logsDir)
-  merged.paths.diffsDir = resolvePath(root, merged.paths.diffsDir)
-  merged.paths.snapshotsDir = resolvePath(root, merged.paths.snapshotsDir)
-  merged.paths.reportsDir = resolvePath(root, merged.paths.reportsDir)
+  merged.paths.artifactsDir = resolvePath(root, inputPaths.artifactsDir || DEFAULTS.paths.artifactsDir)
+  merged.paths.shotsDir = resolvePath(root, inputPaths.shotsDir || DEFAULTS.paths.shotsDir)
+  merged.paths.manifestPath = resolvePath(root, inputPaths.manifestPath || DEFAULTS.paths.manifestPath)
+  merged.paths.reportPath = resolvePath(root, inputPaths.reportPath || DEFAULTS.paths.reportPath)
+  merged.paths.logsDir = resolvePath(root, inputPaths.logsDir || DEFAULTS.paths.logsDir)
+  merged.paths.diffsDir = resolvePath(root, inputPaths.diffsDir || DEFAULTS.paths.diffsDir)
+  merged.paths.snapshotsDir = resolvePath(root, inputPaths.snapshotsDir || DEFAULTS.paths.snapshotsDir)
+  merged.paths.reportsDir = resolvePath(root, inputPaths.reportsDir || DEFAULTS.paths.reportsDir)
 
   if (merged.capture.adapter) {
     merged.capture.adapter = resolvePath(root, merged.capture.adapter)
