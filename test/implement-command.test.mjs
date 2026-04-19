@@ -143,10 +143,89 @@ test("runImplement throws when target is current, worktree is dirty, and --yes i
         }),
       (err) => {
         assert.ok(err instanceof Error)
-        assert.ok(err.message.toLowerCase().includes("uncommitted") || err.message.toLowerCase().includes("dirty"), `expected dirty-worktree error, got: ${err.message}`)
+        assert.ok(err.message.toLowerCase().includes("clean working tree"), `expected clean-worktree error, got: ${err.message}`)
         return true
       }
     )
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("runImplement still rejects dirty current target when --yes is passed", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-dirty-current-yes-"))
+  const reportPath = path.join(dir, "report.md")
+  fs.writeFileSync(reportPath, "# report", "utf8")
+
+  try {
+    await assert.rejects(
+      () =>
+        runImplement(["--target", "current", "--yes"], dir, {
+          loadConfig: async () => ({
+            paths: { root: dir, reportPath },
+            implement: {
+              runner: "codex",
+              target: "current",
+              autoCommit: false,
+              timeoutMs: 1000,
+              codex: { bin: "codex" },
+              copilot: { bin: "copilot" },
+            },
+          }),
+          assertCommandAvailable: () => {},
+          previewTarget: () => ({ summary: "Target: current branch" }),
+          resolveTarget: () => ({ workDir: dir, branchName: null, summary: "Target: current branch" }),
+          runCodexImplement: () => {},
+          runCommand: (_cmd, args) => {
+            if (args[0] === "status") return { stdout: " M src/app.js\n" }
+            return { stdout: "" }
+          },
+        }),
+      /clean working tree/
+    )
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("runImplement rejects dirty branch target before switching branches", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-dirty-branch-"))
+  const reportPath = path.join(dir, "report.md")
+  fs.writeFileSync(reportPath, "# report", "utf8")
+
+  let resolveTargetCalled = false
+
+  try {
+    await assert.rejects(
+      () =>
+        runImplement(["--target", "branch"], dir, {
+          loadConfig: async () => ({
+            paths: { root: dir, reportPath },
+            implement: {
+              runner: "codex",
+              target: "worktree",
+              autoCommit: false,
+              timeoutMs: 1000,
+              codex: { bin: "codex" },
+              copilot: { bin: "copilot" },
+            },
+          }),
+          assertCommandAvailable: () => {},
+          previewTarget: () => ({ summary: "Target: branch uxl-test in current working tree" }),
+          resolveTarget: () => {
+            resolveTargetCalled = true
+            return { workDir: dir, branchName: "uxl-test", summary: "Target: branch uxl-test in current working tree" }
+          },
+          runCodexImplement: () => {},
+          runCommand: (_cmd, args) => {
+            if (args[0] === "status") return { stdout: " M src/app.js\n" }
+            return { stdout: "" }
+          },
+        }),
+      /clean working tree/
+    )
+
+    assert.equal(resolveTargetCalled, false)
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
@@ -194,6 +273,7 @@ test("runImplement auto-commits when enabled", async () => {
   fs.writeFileSync(reportPath, "# report", "utf8")
 
   const commands = []
+  let statusCalls = 0
 
   try {
     await runImplement(["--yes"], dir, {
@@ -213,7 +293,10 @@ test("runImplement auto-commits when enabled", async () => {
       runCodexImplement: () => {},
       runCommand: (command, args) => {
         commands.push([command, ...args].join(" "))
-        if (args[0] === "status") return { stdout: " M src/app.js\n" }
+        if (args[0] === "status") {
+          statusCalls += 1
+          return { stdout: statusCalls === 1 ? "" : " M src/app.js\n" }
+        }
         if (args[0] === "diff") return { stdout: "src/app.js\n" }
         return { stdout: "" }
       },
@@ -227,6 +310,121 @@ test("runImplement auto-commits when enabled", async () => {
     ])
     assert.ok(commands.includes("git rev-parse --is-inside-work-tree"))
     assert.ok(commands.some((entry) => entry.startsWith("git rev-parse HEAD")))
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("runImplement includes untracked files in diff stats and scope validation", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-implement-untracked-"))
+  const reportPath = path.join(dir, "report.md")
+  const snapshotsDir = path.join(dir, ".uxl", "snapshots")
+  fs.mkdirSync(snapshotsDir, { recursive: true })
+  fs.mkdirSync(path.join(dir, "src"), { recursive: true })
+  fs.writeFileSync(reportPath, "# report", "utf8")
+  fs.writeFileSync(path.join(dir, "src", "new-logic.js"), "console.log('new logic')\n", "utf8")
+
+  try {
+    const result = await runImplement(["--target", "current", "--yes"], dir, {
+      loadConfig: async () => ({
+        paths: { root: dir, reportPath, snapshotsDir, reportsDir: path.join(dir, ".uxl", "reports") },
+        implement: {
+          runner: "codex",
+          target: "current",
+          scope: "layout-safe",
+          autoCommit: false,
+          timeoutMs: 1000,
+          codex: { bin: "codex" },
+          copilot: { bin: "copilot" },
+        },
+      }),
+      assertCommandAvailable: () => {},
+      resolveTarget: () => ({ workDir: dir, branchName: "main", summary: "Target: current branch" }),
+      runCodexImplement: () => {},
+      runCommand: (_cmd, args) => {
+        const key = args.join(" ")
+        if (key === "rev-parse --is-inside-work-tree") return { stdout: "true\n" }
+        if (key === "status --porcelain") return { stdout: "" }
+        if (key === "rev-parse HEAD") return { stdout: "abc123\n" }
+        if (key === "rev-parse --abbrev-ref HEAD") return { stdout: "main\n" }
+        if (key === "diff --name-only HEAD --") return { stdout: "" }
+        if (key === "diff --numstat HEAD --") return { stdout: "" }
+        if (key === "ls-files --others --exclude-standard") return { stdout: "src/new-logic.js\n" }
+        return { stdout: "" }
+      },
+    })
+
+    assert.deepEqual(result.diffStats.files, ["src/new-logic.js"])
+    assert.equal(result.diffStats.filesChanged, 1)
+    assert.equal(result.diffStats.linesAdded, 1)
+    assert.match(result.scopeValidation.violations[0], /layout-safe/)
+    assert.match(result.scopeValidation.violations[0], /src\/new-logic\.js/)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("runImplement diff-only prepares untracked files so patches include additions", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-diff-untracked-"))
+  const reportPath = path.join(dir, "report.md")
+  const diffsDir = path.join(dir, ".uxl", "diffs")
+  fs.mkdirSync(diffsDir, { recursive: true })
+  fs.writeFileSync(reportPath, "# report", "utf8")
+
+  const commands = []
+  let untrackedVisible = true
+
+  try {
+    const result = await runImplement(["--diff-only"], dir, {
+      loadConfig: async () => ({
+        paths: { root: dir, reportPath, diffsDir, reportsDir: path.join(dir, ".uxl", "reports") },
+        implement: {
+          runner: "codex",
+          target: "worktree",
+          autoCommit: false,
+          timeoutMs: 1000,
+          codex: { bin: "codex" },
+          copilot: { bin: "copilot" },
+        },
+      }),
+      assertCommandAvailable: () => {},
+      resolveTarget: () => ({ workDir: dir, branchName: "uxl-diff", summary: "Target: worktree" }),
+      cleanupWorktreeTarget: () => {},
+      runCodexImplement: () => {},
+      runCommand: (_cmd, args) => {
+        commands.push(args.join(" "))
+        const key = args.join(" ")
+        if (key === "rev-parse --is-inside-work-tree") return { stdout: "true\n" }
+        if (key === "status --porcelain") return { stdout: "" }
+        if (key === "ls-files --others --exclude-standard") {
+          return { stdout: untrackedVisible ? "src/new-file.js\n" : "" }
+        }
+        if (key === "add -N -- src/new-file.js") {
+          untrackedVisible = false
+          return { stdout: "" }
+        }
+        if (key === "diff --binary HEAD --") {
+          return {
+            stdout: [
+              "diff --git a/src/new-file.js b/src/new-file.js",
+              "new file mode 100644",
+              "index 0000000..1111111",
+              "--- /dev/null",
+              "+++ b/src/new-file.js",
+              "@@ -0,0 +1 @@",
+              "+console.log('new')",
+              "",
+            ].join("\n"),
+          }
+        }
+        if (key === "diff --numstat HEAD --") return { stdout: "1\t0\tsrc/new-file.js\n" }
+        return { stdout: "" }
+      },
+    })
+
+    assert.equal(result.diffOnly, true)
+    assert.ok(commands.includes("add -N -- src/new-file.js"))
+    assert.deepEqual(result.diffStats.files, ["src/new-file.js"])
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }

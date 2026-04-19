@@ -3,6 +3,7 @@ import os from "os"
 import path from "path"
 import readline from "node:readline/promises"
 import { loadConfig } from "../config/load-config.mjs"
+import { assertCleanWorktree } from "../git/working-tree.mjs"
 import { cleanupWorktreeTarget, previewTarget, resolveTarget } from "../git/target-resolver.mjs"
 import { writeSnapshot } from "../git/snapshots.mjs"
 import { buildDefaultImplementPrompt } from "../prompts/default-implement-prompt.mjs"
@@ -120,15 +121,73 @@ function commitImplementedChanges(workDir, runSyncCommand) {
   return true
 }
 
-function getChangedFiles(workDir, runSyncCommand) {
-  return runSyncCommand("git", ["diff", "--name-only", "HEAD", "--"], { cwd: workDir }).stdout
+function listUntrackedFiles(workDir, runSyncCommand) {
+  return runSyncCommand("git", ["ls-files", "--others", "--exclude-standard"], { cwd: workDir }).stdout
     .split(/\r?\n/)
     .map((entry) => entry.trim())
     .filter(Boolean)
 }
 
+function mergeFileLists(left, right) {
+  return [...new Set([...left, ...right])]
+}
+
+function countFileLines(filePath) {
+  const text = fs.readFileSync(filePath, "utf8")
+  if (!text) return 0
+  const lines = text.split(/\r?\n/)
+  return text.endsWith("\n") ? lines.length - 1 : lines.length
+}
+
+function collectUntrackedStats(workDir, files) {
+  let linesAdded = 0
+  for (const file of files) {
+    try {
+      linesAdded += countFileLines(path.join(workDir, file))
+    } catch {
+      linesAdded += 0
+    }
+  }
+
+  return {
+    files,
+    filesChanged: files.length,
+    linesAdded,
+    linesRemoved: 0,
+  }
+}
+
+function mergeDiffStats(base, extra) {
+  const files = mergeFileLists(base.files, extra.files)
+  return {
+    files,
+    filesChanged: files.length,
+    linesAdded: base.linesAdded + extra.linesAdded,
+    linesRemoved: base.linesRemoved + extra.linesRemoved,
+  }
+}
+
+function getChangedFiles(workDir, runSyncCommand) {
+  const trackedFiles = runSyncCommand("git", ["diff", "--name-only", "HEAD", "--"], { cwd: workDir }).stdout
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+  return mergeFileLists(trackedFiles, listUntrackedFiles(workDir, runSyncCommand))
+}
+
 function collectDiffStats(workDir, runSyncCommand) {
-  return parseNumstat(runSyncCommand("git", ["diff", "--numstat", "HEAD", "--"], { cwd: workDir }).stdout)
+  const tracked = parseNumstat(runSyncCommand("git", ["diff", "--numstat", "HEAD", "--"], { cwd: workDir }).stdout)
+  const untrackedFiles = listUntrackedFiles(workDir, runSyncCommand)
+  if (untrackedFiles.length === 0) {
+    return tracked
+  }
+  return mergeDiffStats(tracked, collectUntrackedStats(workDir, untrackedFiles))
+}
+
+function prepareUntrackedFilesForDiff(workDir, runSyncCommand) {
+  const untrackedFiles = listUntrackedFiles(workDir, runSyncCommand)
+  if (untrackedFiles.length === 0) return
+  runSyncCommand("git", ["add", "-N", "--", ...untrackedFiles], { cwd: workDir })
 }
 
 const CSS_ONLY_EXTENSIONS = new Set([".css", ".scss", ".sass", ".less", ".vue", ".svelte"])
@@ -182,16 +241,9 @@ function ensureInsideGitRepo(repoRoot, runSyncCommand) {
   runSyncCommand("git", ["rev-parse", "--is-inside-work-tree"], { cwd: repoRoot })
 }
 
-function isDirtyWorktree(repoRoot, runSyncCommand) {
-  return Boolean(runSyncCommand("git", ["status", "--porcelain"], { cwd: repoRoot }).stdout.trim())
-}
-
-async function confirmCurrentTarget({ targetExplicit, targetMode, isDirty, yes, promptRuntime }) {
+async function confirmCurrentTarget({ targetExplicit, targetMode, yes, promptRuntime }) {
   if (targetMode !== "current") return
   if (yes) return
-  if (isDirty) {
-    throw new Error("Current target has uncommitted changes. Re-run with --yes to proceed.")
-  }
   if (!targetExplicit) {
     console.warn("Warning: applying changes directly to the current branch (configured via implement.target). Use --target worktree or set implement.target in config to isolate changes.")
     return
@@ -229,13 +281,7 @@ async function resolvePrompt({ overrides, config, reportMarkdown, rootDir }) {
   })
 }
 
-function stashDirtyCurrentTarget(repoRoot, runSyncCommand, label) {
-  runSyncCommand("git", ["stash", "push", "--include-untracked", "-m", label], { cwd: repoRoot })
-  const stashRef = runSyncCommand("git", ["stash", "list", "--format=%gd", "-1"], { cwd: repoRoot }).stdout.trim()
-  return stashRef || null
-}
-
-function createSnapshotMetadata({ repoRoot, prepared, targetMode, dirtyBeforeRun, stashRef, runSyncCommand }) {
+function createSnapshotMetadata({ repoRoot, prepared, targetMode, runSyncCommand }) {
   return {
     createdAt: new Date().toISOString(),
     repoRoot,
@@ -244,8 +290,6 @@ function createSnapshotMetadata({ repoRoot, prepared, targetMode, dirtyBeforeRun
     targetMode,
     branchName: prepared.branchName,
     workDir: prepared.workDir,
-    dirtyBeforeRun,
-    stashRef: stashRef || null,
   }
 }
 
@@ -294,6 +338,7 @@ async function generatePatch({
       })
     }
 
+    prepareUntrackedFilesForDiff(prepared.workDir, runSyncCommand)
     const patchText = runSyncCommand("git", ["diff", "--binary", "HEAD", "--"], { cwd: prepared.workDir }).stdout
     const diffStats = collectDiffStats(prepared.workDir, runSyncCommand)
     fs.mkdirSync(config.paths.diffsDir, { recursive: true })
@@ -360,12 +405,16 @@ export async function runImplement(args = [], cwd = process.cwd(), runtime = {})
     implementConfig: config.implement,
     overrides,
   })
-  const dirty = isDirtyWorktree(config.paths.root, runSyncCommand)
+  if (targetMode !== "worktree") {
+    assertCleanWorktree(config.paths.root, {
+      runSyncCommand,
+      label: `Target "${targetMode}"`,
+    })
+  }
 
   await confirmCurrentTarget({
     targetExplicit: overrides.target === "current",
     targetMode,
-    isDirty: dirty,
     yes: overrides.yes,
     promptRuntime,
   })
@@ -437,22 +486,14 @@ export async function runImplement(args = [], cwd = process.cwd(), runtime = {})
   })
 
   let snapshotPath = null
-  let stashRef = null
-  const snapshotLabel = `uxl-snapshot-${Date.now()}`
 
   try {
-    if (targetMode === "current" && dirty) {
-      stashRef = stashDirtyCurrentTarget(config.paths.root, runSyncCommand, snapshotLabel)
-    }
-
     snapshotPath = writeSnapshotFile(
       config.paths.snapshotsDir || path.join(config.paths.root, ".uxl", "snapshots"),
       createSnapshotMetadata({
         repoRoot: config.paths.root,
         prepared,
         targetMode,
-        dirtyBeforeRun: dirty,
-        stashRef,
         runSyncCommand,
       })
     )
