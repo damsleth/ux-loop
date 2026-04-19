@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.3 - 2026-04-19
+
+- Simplified implement safety around the clean-worktree assumption: `current` and `branch` targets now fail fast on dirty repos instead of using stash-based carry-over.
+- Fixed implement diff stats and scope validation to include newly created files, and ensured `uxl diff` captures added files in generated patches.
+- Fixed `uxl apply --commit` to stage deletion patches correctly with `git add -A`.
+- Added regression coverage for clean-worktree enforcement, untracked-file scope validation, diff-only patch generation, and apply commit behavior.
+
 ## 1.1.2 - 2026-04-08
 
 - Added scoped implement modes via `--scope` / `implement.scope`, plus diff-based scope validation for safer code edits.

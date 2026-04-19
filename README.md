@@ -141,10 +141,13 @@ export default defineUxlConfig({
 ux-loop does **not** blindly edit your project.
 
 - changes happen in a git worktree (default)
+- mutating commands assume a clean git working tree
 - no auto-commit unless enabled
 - you review diffs before merging
 
 You stay in control.
+
+If you choose `--target current` or `--target branch`, start from a clean working tree. `uxl implement` and `uxl apply` fail fast when unrelated local changes are present.
 
 ---
 

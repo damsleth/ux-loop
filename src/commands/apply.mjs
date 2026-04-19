@@ -1,18 +1,8 @@
 import fs from "fs"
 import path from "path"
 import { loadConfig } from "../config/load-config.mjs"
+import { assertCleanWorktree } from "../git/working-tree.mjs"
 import { assertCommandAvailable, runCommand } from "../utils/process.mjs"
-
-function parsePatchFilePaths(patchText) {
-  const files = new Set()
-  for (const line of patchText.split("\n")) {
-    const match = line.match(/^\+\+\+ b\/(.+)$/)
-    if (match && match[1] !== "/dev/null") {
-      files.add(match[1])
-    }
-  }
-  return [...files]
-}
 
 function parseApplyArgs(args) {
   const values = {
@@ -60,6 +50,10 @@ export async function runApply(args = [], cwd = process.cwd(), runtime = {}) {
   const ensureCommand = runtime.assertCommandAvailable || assertCommandAvailable
   const config = await load(cwd)
   ensureCommand("git")
+  assertCleanWorktree(config.paths.root, {
+    runSyncCommand,
+    label: "uxl apply",
+  })
 
   const resolvedPatchPath = patchPath ? path.resolve(cwd, patchPath) : findLatestPatch(config.paths.diffsDir)
   if (!fs.existsSync(resolvedPatchPath)) {
@@ -70,11 +64,7 @@ export async function runApply(args = [], cwd = process.cwd(), runtime = {}) {
   runSyncCommand("git", ["apply", resolvedPatchPath], { cwd: config.paths.root })
 
   if (commit) {
-    const patchText = fs.readFileSync(resolvedPatchPath, "utf8")
-    const patchedFiles = parsePatchFilePaths(patchText)
-    if (patchedFiles.length > 0) {
-      runSyncCommand("git", ["add", "--", ...patchedFiles], { cwd: config.paths.root, stdio: "inherit" })
-    }
+    runSyncCommand("git", ["add", "-A"], { cwd: config.paths.root, stdio: "inherit" })
     runSyncCommand("git", ["commit", "-m", "chore: apply ux loop patch"], {
       cwd: config.paths.root,
       stdio: "inherit",

@@ -49,8 +49,9 @@ Output:
 
 Rules:
 - git operations are allowed here only
+- mutable commands assume a clean working tree unless the target is an isolated worktree
 - source mutations must stay within the selected target
-- scope validation runs against the produced diff before optional auto-commit
+- scope validation runs against the produced diff, including newly created files, before optional auto-commit
 
 ## Pipeline
 
