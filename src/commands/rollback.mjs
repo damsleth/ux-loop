@@ -1,4 +1,5 @@
 import { loadConfig } from "../config/load-config.mjs"
+import { assertCleanWorktree } from "../git/working-tree.mjs"
 import { cleanupWorktreeTarget } from "../git/target-resolver.mjs"
 import { listSnapshots, readSnapshot } from "../git/snapshots.mjs"
 import { runCommand } from "../utils/process.mjs"
@@ -78,10 +79,11 @@ export async function runRollback(args = [], cwd = process.cwd(), runtime = {}) 
       }
     }
   } else {
+    assertCleanWorktree(snapshot.repoRoot, {
+      runSyncCommand,
+      label: "Rollback",
+    })
     runSyncCommand("git", ["reset", "--hard", snapshot.head], { cwd: snapshot.repoRoot, stdio: "inherit" })
-    if (snapshot.stashRef) {
-      runSyncCommand("git", ["stash", "pop", snapshot.stashRef], { cwd: snapshot.repoRoot, stdio: "inherit" })
-    }
   }
 
   console.log(`Rolled back snapshot: ${snapshot.createdAt}`)

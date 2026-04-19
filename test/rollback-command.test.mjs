@@ -73,6 +73,71 @@ test("runRollback without --yes throws before doing anything", async () => {
   }
 })
 
+test("runRollback rejects dirty current-target rollback before reset", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-rollback-current-dirty-"))
+  const commands = []
+
+  try {
+    writeSnapshot(dir, {
+      createdAt: "2026-01-01T10:00:00Z",
+      targetMode: "current",
+      branchName: "main",
+      workDir: dir,
+      repoRoot: dir,
+      head: "abc",
+      originalBranch: "main",
+    })
+
+    await assert.rejects(
+      () =>
+        runRollback(["--yes"], "/tmp", {
+          loadConfig: async () => makeConfig(dir),
+          runCommand: (_cmd, args) => {
+            commands.push(args.join(" "))
+            if (args[0] === "status") return { stdout: " M src/app.js\n" }
+            return { stdout: "" }
+          },
+        }),
+      /clean working tree/
+    )
+
+    assert.deepEqual(commands, ["status --porcelain"])
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("runRollback hard-resets clean current-target snapshots", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-rollback-current-clean-"))
+  const commands = []
+
+  try {
+    writeSnapshot(dir, {
+      createdAt: "2026-01-01T10:00:00Z",
+      targetMode: "current",
+      branchName: "main",
+      workDir: dir,
+      repoRoot: dir,
+      head: "abc123",
+      originalBranch: "main",
+    })
+
+    const result = await runRollback(["--yes"], "/tmp", {
+      loadConfig: async () => makeConfig(dir),
+      runCommand: (_cmd, args) => {
+        commands.push(args.join(" "))
+        if (args[0] === "status") return { stdout: "" }
+        return { stdout: "" }
+      },
+    })
+
+    assert.equal(result.status, "success")
+    assert.deepEqual(commands, ["status --porcelain", "reset --hard abc123"])
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test("snapshot rotation keeps at most 20 entries", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-snapshot-rotation-"))
   try {
