@@ -190,7 +190,9 @@ export async function runPipeline(args = [], cwd = process.cwd(), runtime = {}) 
       }
 
       if (config.run.runImplement) {
-        if (config.run.runReview && reviewOutcome.status !== "success") {
+        if (config.run.runShots && shotsOutcome.status !== "success") {
+          recordSkipped(iteration, "implement", "upstream shots step did not succeed")
+        } else if (config.run.runReview && reviewOutcome.status !== "success") {
           recordSkipped(iteration, "implement", "upstream review step did not succeed")
         } else {
           await runStep(iteration, "implement", () => runImplementStep(implementArgs, cwd))

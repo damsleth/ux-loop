@@ -82,14 +82,43 @@ test("runPipeline skips downstream stages when shots fails with stopOnError=fals
   assert.equal(result.exitState, "partial")
   assert.match(logs.join("\n"), /\[uxl:shots\] shots failed/)
   assert.match(logs.join("\n"), /\[uxl:review\] skipped: upstream shots/)
-  assert.match(logs.join("\n"), /\[uxl:implement\] skipped: upstream review/)
+  assert.match(logs.join("\n"), /\[uxl:implement\] skipped: upstream shots/)
 
   const steps = artifacts[0].steps
   assert.equal(steps.find((s) => s.step === "shots").status, "failed")
   assert.equal(steps.find((s) => s.step === "review").status, "skipped")
   assert.match(steps.find((s) => s.step === "review").skipped_reason, /shots/)
   assert.equal(steps.find((s) => s.step === "implement").status, "skipped")
-  assert.match(steps.find((s) => s.step === "implement").skipped_reason, /review/)
+  assert.match(steps.find((s) => s.step === "implement").skipped_reason, /shots/)
+})
+
+test("runPipeline skips implement after failed shots even when review is disabled", async () => {
+  const order = []
+  const artifacts = []
+
+  const result = await runPipeline([], "/tmp/project", {
+    loadConfig: async () =>
+      createBaseConfig({ stopOnError: false, runReview: false, runShots: true, runImplement: true }),
+    runShots: async () => {
+      order.push("shots")
+      throw new Error("shots failed")
+    },
+    runReview: async () => order.push("review"),
+    runImplement: async () => order.push("implement"),
+    errorLogger: () => {},
+    writeJsonArtifact: ({ payload }) => {
+      artifacts.push(payload)
+      return "/tmp/report.json"
+    },
+  })
+
+  assert.deepEqual(order, ["shots"])
+  assert.equal(result.exitState, "partial")
+
+  const steps = artifacts[0].steps
+  const implementStep = steps.find((s) => s.step === "implement")
+  assert.equal(implementStep.status, "skipped")
+  assert.match(implementStep.skipped_reason, /shots/)
 })
 
 test("runPipeline skips implement when review fails with stopOnError=false", async () => {

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Extended `uxl run` implement gating so implement is also skipped when `runShots=true` fails but `runReview=false`; the failing prerequisite now always short-circuits implement.
+
 ## 1.1.5 - 2026-04-19
 
 - Piped Copilot runner prompts via stdin instead of `--prompt` argv, avoiding OS argument-size limits and preventing prompt content from leaking into process listings.
