@@ -358,6 +358,97 @@ test("runInit keeps an existing Playwright port and warns on mismatch", async ()
   })
 })
 
+test("runInit uses PORT from webServer env assignment when baseURL has no port", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-init-env-port-"))
+  installUxlStub(cwd)
+
+  fs.writeFileSync(
+    path.join(cwd, "playwright.config.ts"),
+    [
+      "import { defineConfig } from '@playwright/test'",
+      "",
+      "export default defineConfig({",
+      "  webServer: {",
+      "    command: 'PORT=3000 npm run dev',",
+      "  },",
+      "})",
+      "",
+    ].join("\n"),
+    "utf8"
+  )
+
+  const scaffold = {
+    source: "route-scan",
+    files: [],
+    inventory: [{ id: "home", label: "Home", path: "/", required: true }],
+    flows: [{ name: "home", label: "Home", path: "/", screenshot: { fullPage: true } }],
+    flowMapping: { home: ["home"] },
+  }
+
+  const logs = []
+  const result = await runInit(["--non-interactive"], cwd, {
+    detectPlaywrightInstalled: () => true,
+    buildFlowScaffold: () => scaffold,
+    logger: { log: (msg) => logs.push(String(msg)) },
+  })
+
+  assert.equal(result.port, 3000)
+  assert.equal(result.portSource, "webserver-env")
+  const sourceLogged = logs.some((line) => line.includes("webServer env") && line.includes("PORT=3000"))
+  assert.ok(sourceLogged, `expected env source log, got: ${logs.join(" | ")}`)
+
+  const { raw } = await loadRawConfig(cwd)
+  assert.equal(raw.capture.baseUrl, "http://127.0.0.1:3000")
+})
+
+test("runInit falls back to framework default when preserved webServer command has no port", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-init-no-port-"))
+  installUxlStub(cwd)
+
+  fs.writeFileSync(
+    path.join(cwd, "playwright.config.ts"),
+    [
+      "import { defineConfig } from '@playwright/test'",
+      "",
+      "export default defineConfig({",
+      "  webServer: {",
+      "    command: 'HOST=127.0.0.1 npm run dev',",
+      "  },",
+      "})",
+      "",
+    ].join("\n"),
+    "utf8"
+  )
+
+  const scaffold = {
+    source: "route-scan",
+    files: [],
+    inventory: [{ id: "home", label: "Home", path: "/", required: true }],
+    flows: [{ name: "home", label: "Home", path: "/", screenshot: { fullPage: true } }],
+    flowMapping: { home: ["home"] },
+  }
+
+  const logs = []
+  const result = await runInit(["--non-interactive"], cwd, {
+    detectPlaywrightInstalled: () => true,
+    buildFlowScaffold: () => scaffold,
+    logger: { log: (msg) => logs.push(String(msg)) },
+  })
+
+  assert.equal(result.port, 5173)
+  assert.equal(result.portSource, "framework-default")
+  const warned = logs.some((line) => line.includes("framework default"))
+  assert.ok(warned, `expected framework-default warning, got: ${logs.join(" | ")}`)
+
+  const { raw } = await loadRawConfig(cwd)
+  assert.equal(raw.capture.baseUrl, "http://127.0.0.1:5173")
+  assert.deepEqual(raw.capture.playwright.startCommand, {
+    command: "npm",
+    args: ["run", "dev"],
+    env: { HOST: "127.0.0.1" },
+  })
+})
+
 test("runInit interactive prompt times out with clear error", async () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-init-timeout-"))
   installUxlStub(cwd)

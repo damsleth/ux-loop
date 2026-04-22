@@ -143,6 +143,15 @@ function extractPortFromCommand(parsedCommand) {
   return null
 }
 
+function extractPortFromCommandEnv(parsedCommand) {
+  const env = parsedCommand?.env
+  if (!env || typeof env !== "object") return null
+  const raw = env.PORT
+  if (raw === undefined || raw === null) return null
+  const port = Number(raw)
+  return Number.isFinite(port) ? port : null
+}
+
 function buildDefaultStartCommand(port) {
   return {
     command: "npm",
@@ -333,9 +342,32 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
 
     const playwrightBaseUrlPort = extractPortFromUrl(playwrightConfig?.baseUrl)
     const playwrightCommandPort = extractPortFromCommand(configuredStartCommand)
-    const detectedPort = playwrightBaseUrlPort || playwrightCommandPort
+    const playwrightCommandEnvPort = extractPortFromCommandEnv(configuredStartCommand)
 
-    const effectivePort = detectedPort || derivedPort
+    let portSource = null
+    let detectedPort = null
+    if (playwrightBaseUrlPort) {
+      detectedPort = playwrightBaseUrlPort
+      portSource = "playwright-baseurl"
+    } else if (playwrightCommandPort) {
+      detectedPort = playwrightCommandPort
+      portSource = "webserver-args"
+    } else if (playwrightCommandEnvPort) {
+      detectedPort = playwrightCommandEnvPort
+      portSource = "webserver-env"
+    }
+
+    const hasPreservedCommand = Boolean(configuredStartCommand)
+    let effectivePort
+    if (detectedPort) {
+      effectivePort = detectedPort
+    } else if (hasPreservedCommand) {
+      effectivePort = 5173
+      portSource = "framework-default"
+    } else {
+      effectivePort = derivedPort
+      portSource = "derived-fallback"
+    }
     const configuredBaseUrl = playwrightConfig?.baseUrl || `http://127.0.0.1:${effectivePort}`
     if (!configuredStartCommand) {
       configuredStartCommand = buildDefaultStartCommand(effectivePort)
@@ -344,12 +376,20 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
     if (playwrightConfig?.configPath) {
       logger.log(`Detected Playwright config: ${playwrightConfig.configPath}`)
     }
+    const portSourceMessages = {
+      "playwright-baseurl": `using port ${effectivePort} from Playwright baseURL`,
+      "webserver-args": `using port ${effectivePort} from Playwright webServer command args`,
+      "webserver-env": `using port ${effectivePort} from Playwright webServer env assignment (PORT=${effectivePort})`,
+      "framework-default": `no explicit port found in Playwright webServer command; using framework default ${effectivePort}. Review capture.baseUrl if your dev server starts elsewhere.`,
+      "derived-fallback": `using repo-unique capture port ${effectivePort} (derived from "${path.basename(cwd)}")`,
+    }
+    if (portSourceMessages[portSource]) {
+      logger.log(portSourceMessages[portSource])
+    }
     if (detectedPort && detectedPort !== derivedPort) {
       logger.log(
         `Keeping Playwright-detected port ${detectedPort}; derived repo-unique port would have been ${derivedPort}.`
       )
-    } else if (!detectedPort) {
-      logger.log(`Using repo-unique capture port ${derivedPort} (derived from "${path.basename(cwd)}").`)
     }
 
     let onboardingStatus = "pending"
@@ -428,6 +468,7 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
       gitignoreEntriesAdded,
       port: effectivePort,
       derivedPort,
+      portSource,
     }
   } finally {
     if (promptRuntime) {
