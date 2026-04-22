@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Extended `uxl run` implement gating so implement is also skipped when `runShots=true` fails but `runReview=false`; the failing prerequisite now always short-circuits implement.
+- Stopped the capture dev server when `chromium.launch` throws; the launch call now runs inside the cleanup `try/finally` so a browser launch failure can no longer orphan the spawned server. `runBrowserCleanup` also tolerates a null browser.
 
 ## 1.1.5 - 2026-04-19
 

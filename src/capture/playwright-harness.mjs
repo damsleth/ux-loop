@@ -639,10 +639,12 @@ function buildResolvedFlows(flows) {
 export async function runBrowserCleanup({ browser, server, logger, closeBrowser, stopServer }) {
   const close = closeBrowser || ((target) => target.close())
   const stop = stopServer || stopServerProcess
-  try {
-    await close(browser)
-  } catch (err) {
-    logger?.warn?.(`browser.close failed: ${err instanceof Error ? err.message : err}`)
+  if (browser) {
+    try {
+      await close(browser)
+    } catch (err) {
+      logger?.warn?.(`browser.close failed: ${err instanceof Error ? err.message : err}`)
+    }
   }
   if (server?.proc) {
     try {
@@ -653,8 +655,11 @@ export async function runBrowserCleanup({ browser, server, logger, closeBrowser,
   }
 }
 
-async function withBrowser(options, context, work) {
-  const playwright = await import("playwright")
+export async function runWithBrowser(options, context, work, runtime = {}) {
+  const loadPlaywright = runtime.loadPlaywright || (() => import("playwright"))
+  const ensureServerFn = runtime.ensureServer || ensureServer
+  const cleanupFn = runtime.runBrowserCleanup || runBrowserCleanup
+  const playwright = await loadPlaywright()
   const chromium = playwright.chromium
   const playwrightDevices = playwright.devices
 
@@ -662,7 +667,7 @@ async function withBrowser(options, context, work) {
   const timeoutMs = options.timeoutMs || context.timeoutMs || 120000
   const rootDir = context.rootDir
   const logger = context.logger || console
-  const server = await ensureServer({
+  const server = await ensureServerFn({
     baseUrl,
     timeoutMs,
     startCommand: options.startCommand,
@@ -670,9 +675,10 @@ async function withBrowser(options, context, work) {
     cwd: rootDir,
     logger,
   })
-  const browser = await chromium.launch(options.launch || {})
 
+  let browser = null
   try {
+    browser = await chromium.launch(options.launch || {})
     return await work({
       browser,
       playwrightDevices,
@@ -680,8 +686,12 @@ async function withBrowser(options, context, work) {
       baseUrl: server.baseUrl || baseUrl,
     })
   } finally {
-    await runBrowserCleanup({ browser, server, logger })
+    await cleanupFn({ browser, server, logger })
   }
+}
+
+async function withBrowser(options, context, work) {
+  return runWithBrowser(options, context, work)
 }
 
 export function createPlaywrightCaptureHarness(options = {}) {

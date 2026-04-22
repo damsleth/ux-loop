@@ -9,6 +9,7 @@ import {
   ensureServer,
   isServerReadyResponse,
   runBrowserCleanup,
+  runWithBrowser,
   sanitizeArtifactFragment,
   validatePlaywrightCaptureDefinition,
 } from "../src/capture/playwright-harness.mjs"
@@ -337,6 +338,85 @@ test("runBrowserCleanup skips stopServer when no server proc", async () => {
   })
 
   assert.deepEqual(calls, ["close"])
+})
+
+test("runBrowserCleanup handles null browser and still stops the server", async () => {
+  const calls = []
+  await runBrowserCleanup({
+    browser: null,
+    server: { proc: { id: "proc" } },
+    logger: { warn: () => {} },
+    closeBrowser: async () => calls.push("close"),
+    stopServer: async (proc) => calls.push(`stop:${proc.id}`),
+  })
+
+  assert.deepEqual(calls, ["stop:proc"])
+})
+
+test("runWithBrowser stops the server when chromium.launch throws", async () => {
+  const cleanupCalls = []
+  const serverProc = { id: "dev-server" }
+
+  await assert.rejects(
+    () =>
+      runWithBrowser(
+        { baseUrl: "http://127.0.0.1:45000", launch: {} },
+        { rootDir: "/tmp", logger: { log() {}, warn() {} } },
+        async () => "unused",
+        {
+          loadPlaywright: async () => ({
+            chromium: {
+              launch: async () => {
+                throw new Error("launch boom")
+              },
+            },
+            devices: {},
+          }),
+          ensureServer: async () => ({ proc: serverProc, baseUrl: "http://127.0.0.1:45000" }),
+          runBrowserCleanup: async ({ browser, server }) => {
+            cleanupCalls.push({ browser, serverProc: server?.proc })
+          },
+        }
+      ),
+    /launch boom/
+  )
+
+  assert.equal(cleanupCalls.length, 1)
+  assert.equal(cleanupCalls[0].browser, null)
+  assert.equal(cleanupCalls[0].serverProc, serverProc)
+})
+
+test("runWithBrowser invokes work and cleans up on success", async () => {
+  const order = []
+  const serverProc = { id: "proc" }
+  const browserStub = { kind: "browser", close: async () => order.push("close") }
+
+  const result = await runWithBrowser(
+    { baseUrl: "http://127.0.0.1:45001" },
+    { rootDir: "/tmp", logger: { log() {}, warn() {} } },
+    async (args) => {
+      order.push("work")
+      return `${args.browser.kind}:${args.baseUrl}`
+    },
+    {
+      loadPlaywright: async () => ({
+        chromium: {
+          launch: async () => {
+            order.push("launch")
+            return browserStub
+          },
+        },
+        devices: {},
+      }),
+      ensureServer: async () => ({ proc: serverProc, baseUrl: "http://127.0.0.1:45001/" }),
+      runBrowserCleanup: async ({ browser }) => {
+        if (browser) await browser.close()
+      },
+    }
+  )
+
+  assert.equal(result, "browser:http://127.0.0.1:45001/")
+  assert.deepEqual(order, ["launch", "work", "close"])
 })
 
 test("applyStatefulAction storeFirstLink and gotoStored share runtime state", async () => {
