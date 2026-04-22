@@ -134,21 +134,40 @@ export async function runPipeline(args = [], cwd = process.cwd(), runtime = {}) 
     }
   }
 
+  const recordSkipped = (iteration, label, reason) => {
+    stepReports.push({
+      iteration,
+      step: label,
+      status: "skipped",
+      duration_ms: 0,
+      skipped_reason: reason,
+    })
+    sawFailure = true
+    errorLogger(`[uxl:${label}] skipped: ${reason}`)
+    return { status: "skipped", reason }
+  }
+
   try {
     for (let iteration = 1; iteration <= iterations; iteration += 1) {
       iterationsRun = iteration
+      let shotsOutcome = { status: "skipped", reason: "disabled in config" }
       if (config.run.runShots) {
-        await runStep(iteration, "shots", () => runShotsStep(shotsArgs, cwd))
+        shotsOutcome = await runStep(iteration, "shots", () => runShotsStep(shotsArgs, cwd))
       }
 
+      let reviewOutcome = { status: "skipped", reason: "disabled in config" }
       let reviewResult = null
       if (config.run.runReview) {
-        const outcome = await runStep(iteration, "review", () => runReviewStep(reviewArgs, cwd))
-        if (outcome.status === "success") {
-          reviewResult = outcome.result
-          finalScore = reviewResult?.score ?? finalScore
-          if (initialScore === null && reviewResult?.score !== undefined) {
-            initialScore = reviewResult.score
+        if (config.run.runShots && shotsOutcome.status !== "success") {
+          reviewOutcome = recordSkipped(iteration, "review", "upstream shots step did not succeed")
+        } else {
+          reviewOutcome = await runStep(iteration, "review", () => runReviewStep(reviewArgs, cwd))
+          if (reviewOutcome.status === "success") {
+            reviewResult = reviewOutcome.result
+            finalScore = reviewResult?.score ?? finalScore
+            if (initialScore === null && reviewResult?.score !== undefined) {
+              initialScore = reviewResult.score
+            }
           }
         }
       }
@@ -171,7 +190,11 @@ export async function runPipeline(args = [], cwd = process.cwd(), runtime = {}) 
       }
 
       if (config.run.runImplement) {
-        await runStep(iteration, "implement", () => runImplementStep(implementArgs, cwd))
+        if (config.run.runReview && reviewOutcome.status !== "success") {
+          recordSkipped(iteration, "implement", "upstream review step did not succeed")
+        } else {
+          await runStep(iteration, "implement", () => runImplementStep(implementArgs, cwd))
+        }
       }
     }
   } catch (error) {
@@ -217,6 +240,7 @@ export async function runPipeline(args = [], cwd = process.cwd(), runtime = {}) 
         lines_added: entry.result?.diffStats?.linesAdded ?? null,
         lines_removed: entry.result?.diffStats?.linesRemoved ?? null,
         error: entry.error || null,
+        skipped_reason: entry.skipped_reason || null,
       })),
     },
   })

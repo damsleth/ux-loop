@@ -303,7 +303,14 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
   )
 
   fs.mkdirSync(path.dirname(reportOutputPath), { recursive: true })
-  fs.writeFileSync(reportOutputPath, `${report.join("\n")}\n`, "utf8")
+  const reportBody = `${report.join("\n")}\n`
+  fs.writeFileSync(reportOutputPath, reportBody, "utf8")
+  if (
+    path.basename(config.paths.reportPath) === "report.md" &&
+    path.resolve(reportOutputPath) !== path.resolve(config.paths.reportPath)
+  ) {
+    fs.writeFileSync(config.paths.reportPath, reportBody, "utf8")
+  }
   const reportJsonPath = writeArtifact({
     dir: config.paths.reportsDir || path.join(config.paths.root, ".uxl", "reports"),
     prefix: "uxl_report",

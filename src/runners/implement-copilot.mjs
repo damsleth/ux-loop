@@ -10,8 +10,6 @@ export function runCopilotImplement({ copilotBin, model, timeoutMs, workDir, pro
     "error",
     "--add-dir",
     workDir,
-    "--prompt",
-    prompt,
   ]
 
   if (model) {
@@ -19,6 +17,7 @@ export function runCopilotImplement({ copilotBin, model, timeoutMs, workDir, pro
   }
 
   return runCommand(copilotBin, args, {
+    input: prompt,
     stdio: ["pipe", "inherit", "inherit"],
     maxBuffer: 10 * 1024 * 1024,
     cwd: workDir,

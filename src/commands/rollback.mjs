@@ -40,6 +40,7 @@ export async function runRollback(args = [], cwd = process.cwd(), runtime = {}) 
   const options = parseRollbackArgs(args)
   const load = runtime.loadConfig || loadConfig
   const runSyncCommand = runtime.runCommand || runCommand
+  const cleanupTarget = runtime.cleanupTarget || cleanupWorktreeTarget
   const config = await load(cwd)
 
   if (options.list) {
@@ -64,7 +65,7 @@ export async function runRollback(args = [], cwd = process.cwd(), runtime = {}) 
 
   const { snapshot } = readSnapshot(config.paths.snapshotsDir, options.to)
   if (snapshot.targetMode === "worktree") {
-    cleanupWorktreeTarget({
+    cleanupTarget({
       repoRoot: snapshot.repoRoot,
       workDir: snapshot.workDir,
       branchName: snapshot.branchName,

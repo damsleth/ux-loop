@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.5 - 2026-04-19
+
+- Piped Copilot runner prompts via stdin instead of `--prompt` argv, avoiding OS argument-size limits and preventing prompt content from leaking into process listings.
+- Gated `uxl run` downstream stages on upstream success so `review` and `implement` are recorded as `skipped` (not silently re-run against stale artifacts) when a prerequisite step fails with `stopOnError=false`.
+- Wrote the canonical `.uxl/report.md` alongside the timestamped review output so the default review-to-implement handoff cannot be shadowed by an older `report.md`.
+- Hardened Playwright capture cleanup so a throwing `browser.close()` no longer orphans the dev server; both cleanups now run best-effort with clear warnings.
+- Surfaced dev-server spawn errors and early exits immediately in `ensureServer` instead of stalling through the full readiness timeout with a generic error.
+- Sanitized capture screenshot filenames so flow or device names containing path separators or traversal segments can no longer write outside `shotsDir`.
+- Parsed env-prefixed Playwright `webServer.command` strings (`HOST=127.0.0.1 npm run dev`) during `uxl init`, preserving leading `KEY=value` pairs and passing them through at capture-time spawn.
+- Honored `runtime.cleanupTarget` injection in `runRollback` worktree path for symmetry with the branch/current paths and testability.
+
 ## 1.1.4 - 2026-04-19
 
 - Fixed `paths.root` normalization so relative roots resolve from the config file directory instead of the invocation cwd, and hardened config merging to avoid shared nested defaults.

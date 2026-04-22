@@ -46,8 +46,6 @@ ${screenshotList}`
     "error",
     "--add-dir",
     rootDir,
-    "--prompt",
-    fullPrompt,
   ]
   if (model) {
     args.push("--model", model)
@@ -56,6 +54,8 @@ ${screenshotList}`
   logger?.log?.(`Copilot command: ${formatCommand(copilotBin, args)}`)
   const startedAt = Date.now()
   const result = await runCommandAsync(copilotBin, args, {
+    input: fullPrompt,
+    stdio: ["pipe", "pipe", "pipe"],
     maxBuffer: 10 * 1024 * 1024,
     cwd: rootDir,
     timeoutMs,

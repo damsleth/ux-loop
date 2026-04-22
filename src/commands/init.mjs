@@ -7,6 +7,7 @@ import {
   evaluateFlowCoverage,
   readPlaywrightConfigSnapshot,
 } from "../capture/flow-onboarding.mjs"
+import { derivePortFromCwd } from "../utils/derive-port.mjs"
 
 const DEFAULT_PACKAGE_SCRIPTS = {
   "uxl:init": "uxl init",
@@ -114,7 +115,42 @@ function ensureGitignoreEntries(cwd) {
   return added
 }
 
-function serializeConfig(config, baseUrlFallback = "http://127.0.0.1:5173") {
+function extractPortFromUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== "string") return null
+  try {
+    const parsed = new URL(rawUrl)
+    if (parsed.port) {
+      const port = Number(parsed.port)
+      return Number.isFinite(port) ? port : null
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function extractPortFromCommand(parsedCommand) {
+  if (!parsedCommand || !Array.isArray(parsedCommand.args)) return null
+  const args = parsedCommand.args
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === "--port" && i + 1 < args.length) {
+      const port = Number(args[i + 1])
+      if (Number.isFinite(port)) return port
+    }
+    const inline = typeof args[i] === "string" ? args[i].match(/^--port=(\d+)$/) : null
+    if (inline) return Number(inline[1])
+  }
+  return null
+}
+
+function buildDefaultStartCommand(port) {
+  return {
+    command: "npm",
+    args: ["run", "dev", "--", "--port", String(port)],
+  }
+}
+
+function serializeConfig(config, baseUrlFallback) {
   const token = "__UXL_BASE_URL_TOKEN__"
   const withToken = {
     ...config,
@@ -157,10 +193,7 @@ function withTimeout(promise, timeoutMs, timeoutMessage) {
   ]).finally(() => clearTimeout(timer))
 }
 
-export function splitCommand(commandText) {
-  const input = String(commandText || "").trim()
-  if (!input) return null
-
+function tokenizeCommand(input) {
   const parts = []
   let token = ""
   let quote = null
@@ -211,10 +244,35 @@ export function splitCommand(commandText) {
   if (token) {
     parts.push(token)
   }
+  return parts
+}
+
+const ENV_ASSIGNMENT_RE = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/
+
+export function splitCommand(commandText) {
+  const input = String(commandText || "").trim()
+  if (!input) return null
+
+  const parts = tokenizeCommand(input)
   if (parts.length === 0) return null
 
-  const [command, ...args] = parts
-  return { command, args }
+  const env = {}
+  let index = 0
+  while (index < parts.length) {
+    const match = ENV_ASSIGNMENT_RE.exec(parts[index])
+    if (!match) break
+    env[match[1]] = match[2]
+    index += 1
+  }
+
+  if (index >= parts.length) return null
+
+  const [command, ...args] = parts.slice(index)
+  const result = { command, args }
+  if (Object.keys(env).length > 0) {
+    result.env = env
+  }
+  return result
 }
 
 export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
@@ -265,16 +323,33 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
 
     const scaffold = (runtime.buildFlowScaffold || buildFlowScaffold)(cwd)
     const playwrightConfig = (runtime.readPlaywrightConfigSnapshot || readPlaywrightConfigSnapshot)(cwd)
-    const configuredBaseUrl = playwrightConfig?.baseUrl || "http://127.0.0.1:5173"
 
-    let configuredStartCommand = "dev"
+    const derivedPort = (runtime.derivePortFromCwd || derivePortFromCwd)(cwd)
+
+    let configuredStartCommand = null
     if (playwrightConfig?.webServerCommand) {
-      const parsed = splitCommand(playwrightConfig.webServerCommand)
-      configuredStartCommand = parsed || configuredStartCommand
+      configuredStartCommand = splitCommand(playwrightConfig.webServerCommand)
+    }
+
+    const playwrightBaseUrlPort = extractPortFromUrl(playwrightConfig?.baseUrl)
+    const playwrightCommandPort = extractPortFromCommand(configuredStartCommand)
+    const detectedPort = playwrightBaseUrlPort || playwrightCommandPort
+
+    const effectivePort = detectedPort || derivedPort
+    const configuredBaseUrl = playwrightConfig?.baseUrl || `http://127.0.0.1:${effectivePort}`
+    if (!configuredStartCommand) {
+      configuredStartCommand = buildDefaultStartCommand(effectivePort)
     }
 
     if (playwrightConfig?.configPath) {
       logger.log(`Detected Playwright config: ${playwrightConfig.configPath}`)
+    }
+    if (detectedPort && detectedPort !== derivedPort) {
+      logger.log(
+        `Keeping Playwright-detected port ${detectedPort}; derived repo-unique port would have been ${derivedPort}.`
+      )
+    } else if (!detectedPort) {
+      logger.log(`Using repo-unique capture port ${derivedPort} (derived from "${path.basename(cwd)}").`)
     }
 
     let onboardingStatus = "pending"
@@ -351,6 +426,8 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
       warnings,
       packageScripts,
       gitignoreEntriesAdded,
+      port: effectivePort,
+      derivedPort,
     }
   } finally {
     if (promptRuntime) {

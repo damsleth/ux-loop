@@ -138,6 +138,46 @@ test("runRollback hard-resets clean current-target snapshots", async () => {
   }
 })
 
+test("runRollback worktree uses runtime.cleanupTarget when provided", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-rollback-worktree-inject-"))
+  const cleanupCalls = []
+  const gitCalls = []
+
+  try {
+    writeSnapshot(dir, {
+      createdAt: "2026-01-01T10:00:00Z",
+      targetMode: "worktree",
+      branchName: "uxl-wt",
+      workDir: "/tmp/uxl-wt",
+      repoRoot: dir,
+      head: "abc123",
+      originalBranch: "main",
+    })
+
+    const result = await runRollback(["--yes"], "/tmp", {
+      loadConfig: async () => makeConfig(dir),
+      runCommand: (_cmd, args) => {
+        gitCalls.push(args.join(" "))
+        return { stdout: "" }
+      },
+      cleanupTarget: (payload) => {
+        cleanupCalls.push(payload)
+      },
+    })
+
+    assert.equal(result.status, "success")
+    assert.equal(cleanupCalls.length, 1)
+    assert.deepEqual(cleanupCalls[0], {
+      repoRoot: dir,
+      workDir: "/tmp/uxl-wt",
+      branchName: "uxl-wt",
+    })
+    assert.deepEqual(gitCalls, [])
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test("snapshot rotation keeps at most 20 entries", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-snapshot-rotation-"))
   try {

@@ -54,11 +54,12 @@ test("runPipeline stops immediately on error when stopOnError=true", async () =>
   assert.deepEqual(order, ["shots", "review"])
 })
 
-test("runPipeline logs and continues when stopOnError=false", async () => {
+test("runPipeline skips downstream stages when shots fails with stopOnError=false", async () => {
   const order = []
   const logs = []
+  const artifacts = []
 
-  await runPipeline([], "/tmp/project", {
+  const result = await runPipeline([], "/tmp/project", {
     loadConfig: async () => createBaseConfig({ stopOnError: false }),
     runShots: async () => {
       order.push("shots")
@@ -71,11 +72,43 @@ test("runPipeline logs and continues when stopOnError=false", async () => {
       order.push("implement")
     },
     errorLogger: (message) => logs.push(message),
+    writeJsonArtifact: ({ payload }) => {
+      artifacts.push(payload)
+      return "/tmp/report.json"
+    },
   })
 
-  assert.deepEqual(order, ["shots", "review", "implement"])
-  assert.equal(logs.length, 1)
-  assert.match(logs[0], /\[uxl:shots\] shots failed/)
+  assert.deepEqual(order, ["shots"])
+  assert.equal(result.exitState, "partial")
+  assert.match(logs.join("\n"), /\[uxl:shots\] shots failed/)
+  assert.match(logs.join("\n"), /\[uxl:review\] skipped: upstream shots/)
+  assert.match(logs.join("\n"), /\[uxl:implement\] skipped: upstream review/)
+
+  const steps = artifacts[0].steps
+  assert.equal(steps.find((s) => s.step === "shots").status, "failed")
+  assert.equal(steps.find((s) => s.step === "review").status, "skipped")
+  assert.match(steps.find((s) => s.step === "review").skipped_reason, /shots/)
+  assert.equal(steps.find((s) => s.step === "implement").status, "skipped")
+  assert.match(steps.find((s) => s.step === "implement").skipped_reason, /review/)
+})
+
+test("runPipeline skips implement when review fails with stopOnError=false", async () => {
+  const order = []
+
+  const result = await runPipeline([], "/tmp/project", {
+    loadConfig: async () => createBaseConfig({ stopOnError: false }),
+    runShots: async () => order.push("shots"),
+    runReview: async () => {
+      order.push("review")
+      throw new Error("review failed")
+    },
+    runImplement: async () => order.push("implement"),
+    errorLogger: () => {},
+    writeJsonArtifact: () => "/tmp/report.json",
+  })
+
+  assert.deepEqual(order, ["shots", "review"])
+  assert.equal(result.exitState, "partial")
 })
 
 test("runPipeline splits shared flags by command", async () => {

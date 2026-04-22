@@ -151,21 +151,23 @@ function normalizeStartCommand(startCommand) {
     return {
       command: "npm",
       args: ["run", startCommand],
+      env: {},
     }
   }
   if (typeof startCommand === "object" && startCommand.command) {
     return {
       command: startCommand.command,
       args: Array.isArray(startCommand.args) ? startCommand.args : [],
+      env: startCommand.env && typeof startCommand.env === "object" ? { ...startCommand.env } : {},
     }
   }
   throw new Error("Invalid capture.playwright.startCommand. Use a script name string or { command, args }.")
 }
 
-async function ensureServer({ baseUrl, timeoutMs, startCommand, env, cwd, logger }) {
+async function ensureServer({ baseUrl, timeoutMs, startCommand, env, cwd, logger, spawnFn = spawn, waitForServerFn = waitForServer }) {
   if (!baseUrl) return { proc: null, baseUrl }
 
-  const alreadyReadyUrl = await waitForServer(baseUrl, 5000)
+  const alreadyReadyUrl = await waitForServerFn(baseUrl, 5000)
   if (alreadyReadyUrl) {
     logger?.log?.(
       `Capture server already running at ${alreadyReadyUrl}; skipping startCommand (configured baseUrl: ${baseUrl})`
@@ -179,13 +181,56 @@ async function ensureServer({ baseUrl, timeoutMs, startCommand, env, cwd, logger
   }
 
   logger?.log?.(`Starting capture server: ${normalizedStart.command} ${normalizedStart.args.join(" ")}`)
-  const proc = spawn(normalizedStart.command, normalizedStart.args, {
+  const spawnEnv = { ...env, ...normalizedStart.env }
+  const proc = spawnFn(normalizedStart.command, normalizedStart.args, {
     cwd,
     stdio: "inherit",
-    env,
+    env: spawnEnv,
   })
 
-  const readyUrl = await waitForServer(baseUrl, timeoutMs)
+  let settled = false
+  let onError
+  let onExit
+  const cleanupListeners = () => {
+    if (onError) proc.off("error", onError)
+    if (onExit) proc.off("exit", onExit)
+  }
+
+  const failurePromise = new Promise((_resolve, reject) => {
+    onError = (err) => {
+      if (settled) return
+      settled = true
+      cleanupListeners()
+      const detail = err?.code ? `${err.code}: ${err.message}` : err?.message || String(err)
+      reject(new Error(`Capture server failed to start: ${detail}`))
+    }
+    onExit = (code, signal) => {
+      if (settled) return
+      settled = true
+      cleanupListeners()
+      reject(new Error(`Capture server exited before becoming ready (code=${code}, signal=${signal})`))
+    }
+    proc.on("error", onError)
+    proc.on("exit", onExit)
+  })
+
+  let readyUrl
+  try {
+    readyUrl = await Promise.race([waitForServerFn(baseUrl, timeoutMs), failurePromise])
+  } catch (err) {
+    try {
+      await stopServerProcess(proc, logger)
+    } catch {
+      // best-effort cleanup
+    }
+    throw err
+  } finally {
+    if (!settled) {
+      settled = true
+      cleanupListeners()
+    }
+  }
+
   if (!readyUrl) {
     await stopServerProcess(proc, logger)
     throw new Error(`Capture server did not become ready at ${baseUrl}`)
@@ -197,6 +242,8 @@ async function ensureServer({ baseUrl, timeoutMs, startCommand, env, cwd, logger
 
   return { proc, baseUrl: readyUrl }
 }
+
+export { ensureServer }
 
 function getActionTimeout(action) {
   return action.timeout ?? action.timeoutMs ?? 15000
@@ -475,11 +522,36 @@ async function prepareScreenshot(page, flow, options) {
   await page.waitForTimeout(flow.screenshot?.stabilizationDelayMs ?? options.stabilizationDelayMs ?? 200)
 }
 
+export function sanitizeArtifactFragment(value, { kind, context }) {
+  const raw = String(value ?? "")
+  const cleaned = raw
+    .replace(/\0/g, "")
+    .split(/[\\/]/)
+    .filter((part) => part && part !== "." && part !== "..")
+    .join("-")
+    .replace(/[^A-Za-z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "")
+  if (!cleaned) {
+    throw new Error(`Invalid ${kind} "${raw}" for ${context}: cannot be normalized to a safe filename.`)
+  }
+  return cleaned
+}
+
 async function runFlow({ page, flow, baseUrl, shotsDir, deviceName, runtime, options, captureState }) {
-  const screenshotName = flow.screenshot?.name || flow.name || flow.slug
-  if (!screenshotName) {
+  const rawScreenshotName = flow.screenshot?.name || flow.name || flow.slug
+  if (!rawScreenshotName) {
     throw new Error(`Flow "${flow.label || "(unnamed)"}" must define screenshot.name or name.`)
   }
+  const flowLabel = flow.label || "(unnamed)"
+  const screenshotName = sanitizeArtifactFragment(rawScreenshotName, {
+    kind: "flow name",
+    context: `flow "${flowLabel}"`,
+  })
+  const safeDeviceName = sanitizeArtifactFragment(deviceName, {
+    kind: "device name",
+    context: `flow "${flowLabel}"`,
+  })
 
   const url = resolveFlowUrl(baseUrl, flow.path)
   if (url) {
@@ -521,7 +593,15 @@ async function runFlow({ page, flow, baseUrl, shotsDir, deviceName, runtime, opt
     return null
   }
 
-  const screenshotPath = path.join(shotsDir, `${screenshotName}-${deviceName}.png`)
+  const screenshotPath = path.join(shotsDir, `${screenshotName}-${safeDeviceName}.png`)
+  const resolvedShotsDir = path.resolve(shotsDir)
+  const resolvedScreenshotPath = path.resolve(screenshotPath)
+  if (
+    resolvedScreenshotPath !== resolvedShotsDir &&
+    !resolvedScreenshotPath.startsWith(`${resolvedShotsDir}${path.sep}`)
+  ) {
+    throw new Error(`Screenshot path "${screenshotPath}" escapes shotsDir "${shotsDir}".`)
+  }
   await prepareScreenshot(page, flow, options)
 
   if (flow.screenshot?.selector) {
@@ -556,6 +636,23 @@ function buildResolvedFlows(flows) {
       ]
 }
 
+export async function runBrowserCleanup({ browser, server, logger, closeBrowser, stopServer }) {
+  const close = closeBrowser || ((target) => target.close())
+  const stop = stopServer || stopServerProcess
+  try {
+    await close(browser)
+  } catch (err) {
+    logger?.warn?.(`browser.close failed: ${err instanceof Error ? err.message : err}`)
+  }
+  if (server?.proc) {
+    try {
+      await stop(server.proc, logger)
+    } catch (err) {
+      logger?.warn?.(`stopServerProcess failed: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+}
+
 async function withBrowser(options, context, work) {
   const playwright = await import("playwright")
   const chromium = playwright.chromium
@@ -583,10 +680,7 @@ async function withBrowser(options, context, work) {
       baseUrl: server.baseUrl || baseUrl,
     })
   } finally {
-    await browser.close()
-    if (server.proc) {
-      await stopServerProcess(server.proc, logger)
-    }
+    await runBrowserCleanup({ browser, server, logger })
   }
 }
 
