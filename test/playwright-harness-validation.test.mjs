@@ -12,6 +12,7 @@ import {
   runBrowserCleanup,
   runWithBrowser,
   sanitizeArtifactFragment,
+  verifyServerIdentity,
   validatePlaywrightCaptureDefinition,
 } from "../src/capture/playwright-harness.mjs"
 
@@ -326,6 +327,68 @@ test("ensureServer merges startCommand.env into spawn environment", async () => 
   assert.equal(capturedSpawnOptions.env.PATH, "/usr/bin")
 })
 
+test("ensureServer runs identity check against reused server and surfaces its failure", async () => {
+  let stopCalled = false
+  const silentLogger = { log() {}, warn() {} }
+  await assert.rejects(
+    () =>
+      ensureServer({
+        baseUrl: "http://127.0.0.1:15999",
+        timeoutMs: 200,
+        startCommand: { command: "fake", args: [] },
+        env: {},
+        cwd: process.cwd(),
+        logger: silentLogger,
+        spawnFn: () => {
+          stopCalled = true
+          return makeFakeProc()
+        },
+        waitForServerFn: async () => "http://127.0.0.1:15999/",
+        expectTitleIncludes: "my-app",
+        verifyIdentityFn: async () => {
+          throw new Error("fingerprint mismatch on reused server")
+        },
+      }),
+    /fingerprint mismatch on reused server/
+  )
+  assert.equal(stopCalled, false, "should not spawn when reused server is already ready")
+})
+
+test("ensureServer stops spawned server when identity check fails", async () => {
+  const proc = makeFakeProc()
+  let killed = false
+  proc.kill = () => {
+    killed = true
+    queueMicrotask(() => proc.emit("exit", 0, null))
+  }
+  const silentLogger = { log() {}, warn() {} }
+  let probeCalls = 0
+
+  await assert.rejects(
+    () =>
+      ensureServer({
+        baseUrl: "http://127.0.0.1:15999",
+        timeoutMs: 200,
+        startCommand: { command: "fake", args: [] },
+        env: {},
+        cwd: process.cwd(),
+        logger: silentLogger,
+        spawnFn: () => proc,
+        waitForServerFn: async () => {
+          probeCalls += 1
+          return probeCalls === 1 ? null : "http://127.0.0.1:15999/"
+        },
+        expectTitleIncludes: "my-app",
+        verifyIdentityFn: async () => {
+          throw new Error("fingerprint mismatch after spawn")
+        },
+      }),
+    /fingerprint mismatch after spawn/
+  )
+
+  assert.equal(killed, true, "spawned server must be killed when identity check fails")
+})
+
 test("ensureServer resolves normally when the server becomes ready", async () => {
   const proc = makeFakeProc()
   const silentLogger = { log() {}, warn() {} }
@@ -445,6 +508,71 @@ test("runWithBrowser stops the server when chromium.launch throws", async () => 
   assert.equal(cleanupCalls.length, 1)
   assert.equal(cleanupCalls[0].browser, null)
   assert.equal(cleanupCalls[0].serverProc, serverProc)
+})
+
+test("verifyServerIdentity passes when the title contains the expected substring", async () => {
+  const fetchFn = async () => ({
+    text: async () => "<html><head><title>MyApp &amp; Friends</title></head></html>",
+  })
+  const result = await verifyServerIdentity({
+    baseUrl: "http://127.0.0.1:44000",
+    expectTitleIncludes: "myapp",
+    fetchFn,
+    logger: { warn() {} },
+  })
+  assert.equal(result.checked, true)
+  assert.equal(result.matched, true)
+})
+
+test("verifyServerIdentity throws with lsof hint when title does not match", async () => {
+  const fetchFn = async () => ({
+    text: async () => "<html><head><title>other-app</title></head></html>",
+  })
+  await assert.rejects(
+    () =>
+      verifyServerIdentity({
+        baseUrl: "http://127.0.0.1:44123",
+        expectTitleIncludes: "my-app",
+        fetchFn,
+        logger: { warn() {} },
+      }),
+    (err) => {
+      assert.match(err.message, /does not match the expected fingerprint/)
+      assert.match(err.message, /expected title to include: my-app/)
+      assert.match(err.message, /actual title:\s+other-app/)
+      assert.match(err.message, /lsof -iTCP:44123 -sTCP:LISTEN/)
+      return true
+    }
+  )
+})
+
+test("verifyServerIdentity throws with response snippet when no title is found", async () => {
+  const fetchFn = async () => ({
+    text: async () => "<html><body>no title here, sorry</body></html>",
+  })
+  await assert.rejects(
+    () =>
+      verifyServerIdentity({
+        baseUrl: "http://127.0.0.1:44000",
+        expectTitleIncludes: "my-app",
+        fetchFn,
+        logger: { warn() {} },
+      }),
+    /did not return a parseable <title>[\s\S]*response snippet:\s*<html>/
+  )
+})
+
+test("verifyServerIdentity skips when expectTitleIncludes is empty", async () => {
+  const warnings = []
+  const result = await verifyServerIdentity({
+    baseUrl: "http://127.0.0.1:44000",
+    expectTitleIncludes: "",
+    fetchFn: async () => ({ text: async () => "" }),
+    logger: { warn: (m) => warnings.push(m) },
+  })
+  assert.equal(result.checked, false)
+  assert.equal(result.reason, "no-expectation")
+  assert.equal(warnings.length, 1)
 })
 
 test("runWithBrowser invokes work and cleans up on success", async () => {

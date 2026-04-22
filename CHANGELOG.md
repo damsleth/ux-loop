@@ -6,6 +6,7 @@
 - Stopped the capture dev server when `chromium.launch` throws; the launch call now runs inside the cleanup `try/finally` so a browser launch failure can no longer orphan the spawned server. `runBrowserCleanup` also tolerates a null browser.
 - Detected screenshot filename collisions where different raw flow or device names sanitize to the same artifact path; capture now throws a clear duplicate-artifact error instead of silently overwriting shots.
 - Detected `PORT=...` env assignments in imported Playwright `webServer.command` strings and used them for `capture.baseUrl` when no explicit `baseURL` is present. When no port can be detected anywhere, init now keeps the framework default (5173) instead of inventing a derived port the preserved command cannot honor, and logs the chosen port source (`playwright-baseurl`, `webserver-args`, `webserver-env`, `framework-default`, or `derived-fallback`).
+- Added a capture server identity fingerprint: new `capture.expectTitleIncludes` config option, verified via `verifyServerIdentity` against the live HTML `<title>` immediately after server readiness on both spawned and reused paths. `uxl init` scaffolds the default from `package.json` (scope stripped) and failures surface the expected/actual titles plus an `lsof -iTCP:<port> -sTCP:LISTEN` hint.
 
 ## 1.1.5 - 2026-04-19
 

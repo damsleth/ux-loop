@@ -265,6 +265,12 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
     throw new Error(`capture.playwright must be an object in ${configFilePath}.`)
   }
 
+  if (merged.capture.expectTitleIncludes !== undefined && merged.capture.expectTitleIncludes !== null) {
+    if (typeof merged.capture.expectTitleIncludes !== "string" || !merged.capture.expectTitleIncludes.trim()) {
+      throw new Error(`capture.expectTitleIncludes must be a non-empty string when set in ${configFilePath}.`)
+    }
+  }
+
   validateEnum(merged.review.runner, ["codex", "copilot", "openai"], "review.runner")
   validateEnum(merged.implement.runner, ["codex", "copilot"], "implement.runner")
   validateEnum(merged.implement.target, ["current", "branch", "worktree"], "implement.target")

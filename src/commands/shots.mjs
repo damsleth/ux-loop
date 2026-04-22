@@ -75,6 +75,7 @@ export async function runShots(args = [], cwd = process.cwd(), runtime = {}) {
         capture = harnessFactory({
           baseUrl: config.capture.baseUrl,
           timeoutMs: config.capture.timeoutMs,
+          expectTitleIncludes: config.capture.expectTitleIncludes,
           startCommand: playwrightConfig.startCommand,
           devices: playwrightConfig.devices,
           flows: playwrightConfig.flows,
@@ -100,6 +101,7 @@ export async function runShots(args = [], cwd = process.cwd(), runtime = {}) {
       logger,
       env: { ...process.env, ...(config.capture.env || {}) },
       timeoutMs: config.capture.timeoutMs,
+      expectTitleIncludes: config.capture.expectTitleIncludes,
     })
 
     if (!Array.isArray(groups) || groups.length === 0) {

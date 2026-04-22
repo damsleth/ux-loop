@@ -164,14 +164,103 @@ function normalizeStartCommand(startCommand) {
   throw new Error("Invalid capture.playwright.startCommand. Use a script name string or { command, args }.")
 }
 
-async function ensureServer({ baseUrl, timeoutMs, startCommand, env, cwd, logger, spawnFn = spawn, waitForServerFn = waitForServer }) {
+const TITLE_REGEX = /<title[^>]*>([\s\S]*?)<\/title>/i
+
+function decodeBasicEntities(value) {
+  return String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+}
+
+function extractTitleFromHtml(html) {
+  const match = TITLE_REGEX.exec(String(html || ""))
+  if (!match) return null
+  return decodeBasicEntities(match[1]).replace(/\s+/g, " ").trim()
+}
+
+export async function verifyServerIdentity({
+  baseUrl,
+  expectTitleIncludes,
+  fetchFn = globalThis.fetch,
+  logger,
+  timeoutMs = 5000,
+}) {
+  if (!expectTitleIncludes) {
+    logger?.warn?.("Skipping capture server identity check (no expectTitleIncludes configured).")
+    return { checked: false, reason: "no-expectation" }
+  }
+  if (typeof fetchFn !== "function") {
+    logger?.warn?.("Skipping capture server identity check (fetch not available in this runtime).")
+    return { checked: false, reason: "no-fetch" }
+  }
+  const controller = typeof AbortController === "function" ? new AbortController() : null
+  const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null
+  let response
+  try {
+    response = await fetchFn(baseUrl, { signal: controller?.signal })
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
+  const body = await response.text()
+  const actualTitle = extractTitleFromHtml(body)
+  const expected = String(expectTitleIncludes).toLowerCase()
+  const normalizedActual = actualTitle ? actualTitle.toLowerCase() : ""
+  if (actualTitle && normalizedActual.includes(expected)) {
+    return { checked: true, matched: true, actualTitle }
+  }
+  const urlForHint = (() => {
+    try {
+      return new URL(baseUrl)
+    } catch {
+      return null
+    }
+  })()
+  const portHint = urlForHint?.port
+    ? `\nAnother process may be squatting this port. To find it:\n  lsof -iTCP:${urlForHint.port} -sTCP:LISTEN`
+    : ""
+  if (!actualTitle) {
+    const snippet = String(body || "").slice(0, 200).replace(/\s+/g, " ").trim()
+    throw new Error(
+      `Capture server at ${baseUrl} did not return a parseable <title>.\n` +
+        `  expected title to include: ${expectTitleIncludes}\n` +
+        `  response snippet:          ${snippet || "(empty)"}${portHint}`
+    )
+  }
+  throw new Error(
+    `Capture server at ${baseUrl} does not match the expected fingerprint.\n` +
+      `  expected title to include: ${expectTitleIncludes}\n` +
+      `  actual title:              ${actualTitle}${portHint}`
+  )
+}
+
+async function ensureServer({
+  baseUrl,
+  timeoutMs,
+  startCommand,
+  env,
+  cwd,
+  logger,
+  spawnFn = spawn,
+  waitForServerFn = waitForServer,
+  expectTitleIncludes,
+  verifyIdentityFn = verifyServerIdentity,
+}) {
   if (!baseUrl) return { proc: null, baseUrl }
+
+  const runVerify = async (readyUrl) => {
+    if (!expectTitleIncludes) return
+    await verifyIdentityFn({ baseUrl: readyUrl, expectTitleIncludes, logger })
+  }
 
   const alreadyReadyUrl = await waitForServerFn(baseUrl, 5000)
   if (alreadyReadyUrl) {
     logger?.log?.(
       `Capture server already running at ${alreadyReadyUrl}; skipping startCommand (configured baseUrl: ${baseUrl})`
     )
+    await runVerify(alreadyReadyUrl)
     return { proc: null, baseUrl: alreadyReadyUrl }
   }
 
@@ -238,6 +327,13 @@ async function ensureServer({ baseUrl, timeoutMs, startCommand, env, cwd, logger
 
   if (readyUrl !== baseUrl) {
     logger?.log?.(`Capture server is ready at ${readyUrl} (configured baseUrl: ${baseUrl})`)
+  }
+
+  try {
+    await runVerify(readyUrl)
+  } catch (err) {
+    await stopServerProcess(proc, logger)
+    throw err
   }
 
   return { proc, baseUrl: readyUrl }
@@ -712,6 +808,7 @@ export async function runWithBrowser(options, context, work, runtime = {}) {
     env: { ...process.env, ...(context.env || {}), ...(options.env || {}) },
     cwd: rootDir,
     logger,
+    expectTitleIncludes: options.expectTitleIncludes ?? context.expectTitleIncludes,
   })
 
   let browser = null

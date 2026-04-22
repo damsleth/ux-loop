@@ -449,6 +449,60 @@ test("runInit falls back to framework default when preserved webServer command h
   })
 })
 
+test("runInit scaffolds expectTitleIncludes from package.json name (scope stripped)", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-init-fingerprint-"))
+  installUxlStub(cwd)
+  fs.writeFileSync(
+    path.join(cwd, "package.json"),
+    JSON.stringify({ name: "@acme/cool-app", version: "0.0.1" }, null, 2),
+    "utf8"
+  )
+
+  const scaffold = {
+    source: "route-scan",
+    files: [],
+    inventory: [{ id: "home", label: "Home", path: "/", required: true }],
+    flows: [{ name: "home", label: "Home", path: "/", screenshot: { fullPage: true } }],
+    flowMapping: { home: ["home"] },
+  }
+
+  await runInit(["--non-interactive"], cwd, {
+    detectPlaywrightInstalled: () => true,
+    buildFlowScaffold: () => scaffold,
+    logger: { log: () => {} },
+  })
+
+  const { raw } = await loadRawConfig(cwd)
+  assert.equal(raw.capture.expectTitleIncludes, "cool-app")
+})
+
+test("runInit omits expectTitleIncludes when package.json has no usable name", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-init-no-fingerprint-"))
+  installUxlStub(cwd)
+  fs.writeFileSync(
+    path.join(cwd, "package.json"),
+    JSON.stringify({ version: "0.0.1" }, null, 2),
+    "utf8"
+  )
+
+  const scaffold = {
+    source: "route-scan",
+    files: [],
+    inventory: [{ id: "home", label: "Home", path: "/", required: true }],
+    flows: [{ name: "home", label: "Home", path: "/", screenshot: { fullPage: true } }],
+    flowMapping: { home: ["home"] },
+  }
+
+  await runInit(["--non-interactive"], cwd, {
+    detectPlaywrightInstalled: () => true,
+    buildFlowScaffold: () => scaffold,
+    logger: { log: () => {} },
+  })
+
+  const { raw } = await loadRawConfig(cwd)
+  assert.equal(raw.capture.expectTitleIncludes, undefined)
+})
+
 test("runInit interactive prompt times out with clear error", async () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-init-timeout-"))
   installUxlStub(cwd)

@@ -159,6 +159,22 @@ function buildDefaultStartCommand(port) {
   }
 }
 
+function resolveExpectTitleIncludesFromPackageJson(cwd) {
+  const packageJsonPath = path.join(cwd, "package.json")
+  if (!fs.existsSync(packageJsonPath)) return null
+  let parsed
+  try {
+    parsed = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"))
+  } catch {
+    return null
+  }
+  const raw = typeof parsed?.name === "string" ? parsed.name.trim() : ""
+  if (!raw) return null
+  const withoutScope = raw.startsWith("@") ? raw.split("/").slice(1).join("/") : raw
+  const candidate = withoutScope.trim()
+  return candidate || null
+}
+
 function serializeConfig(config, baseUrlFallback) {
   const token = "__UXL_BASE_URL_TOKEN__"
   const withToken = {
@@ -415,10 +431,16 @@ export async function runInit(args = [], cwd = process.cwd(), runtime = {}) {
       }
     }
 
+    const expectTitleIncludes = (runtime.resolveExpectTitleIncludes || resolveExpectTitleIncludesFromPackageJson)(cwd)
+    if (expectTitleIncludes) {
+      logger.log(`Capture server identity fingerprint: expecting <title> to include "${expectTitleIncludes}".`)
+    }
+
     const configObject = {
       capture: {
         runner: "playwright",
         timeoutMs: 120000,
+        ...(expectTitleIncludes ? { expectTitleIncludes } : {}),
         onboarding: {
           status: onboardingStatus,
         },
