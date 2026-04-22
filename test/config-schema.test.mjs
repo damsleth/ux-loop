@@ -203,3 +203,48 @@ test("normalizeConfig rejects custom runner with complete onboarding when requir
     /cannot be "complete"/
   )
 })
+
+test("normalizeConfig accepts a non-empty capture.expectTitleIncludes string", () => {
+  const config = normalizeConfig({
+    capture: { expectTitleIncludes: "my-app" },
+  })
+  assert.equal(config.capture.expectTitleIncludes, "my-app")
+})
+
+test("normalizeConfig rejects empty capture.expectTitleIncludes", () => {
+  assert.throws(
+    () => normalizeConfig({ capture: { expectTitleIncludes: "" } }),
+    /capture\.expectTitleIncludes must be a non-empty string/
+  )
+  assert.throws(
+    () => normalizeConfig({ capture: { expectTitleIncludes: "   " } }),
+    /capture\.expectTitleIncludes must be a non-empty string/
+  )
+  assert.throws(
+    () => normalizeConfig({ capture: { expectTitleIncludes: 42 } }),
+    /capture\.expectTitleIncludes must be a non-empty string/
+  )
+})
+
+test("normalizeConfig accepts capture.playwright.reuseExistingServer as boolean", () => {
+  const enabled = normalizeConfig({
+    capture: { playwright: { reuseExistingServer: true } },
+  })
+  assert.equal(enabled.capture.playwright.reuseExistingServer, true)
+
+  const disabled = normalizeConfig({
+    capture: { playwright: { reuseExistingServer: false } },
+  })
+  assert.equal(disabled.capture.playwright.reuseExistingServer, false)
+})
+
+test("normalizeConfig rejects non-boolean capture.playwright.reuseExistingServer", () => {
+  assert.throws(
+    () => normalizeConfig({ capture: { playwright: { reuseExistingServer: "true" } } }),
+    /capture\.playwright\.reuseExistingServer must be boolean/
+  )
+  assert.throws(
+    () => normalizeConfig({ capture: { playwright: { reuseExistingServer: 1 } } }),
+    /capture\.playwright\.reuseExistingServer must be boolean/
+  )
+})

@@ -140,6 +140,28 @@ test("runPipeline skips implement when review fails with stopOnError=false", asy
   assert.equal(result.exitState, "partial")
 })
 
+test("runPipeline runs implement alone when runShots and runReview are both disabled", async () => {
+  const order = []
+
+  const result = await runPipeline([], "/tmp/project", {
+    loadConfig: async () =>
+      createBaseConfig({
+        stopOnError: false,
+        runShots: false,
+        runReview: false,
+        runImplement: true,
+      }),
+    runShots: async () => order.push("shots"),
+    runReview: async () => order.push("review"),
+    runImplement: async () => order.push("implement"),
+    errorLogger: () => {},
+    writeJsonArtifact: () => "/tmp/report.json",
+  })
+
+  assert.deepEqual(order, ["implement"])
+  assert.equal(result.exitState, "success")
+})
+
 test("runPipeline splits shared flags by command", async () => {
   let seenReviewArgs = null
   let seenImplementArgs = null

@@ -632,6 +632,40 @@ test("verifyServerIdentity skips when expectTitleIncludes is empty", async () =>
   assert.equal(warnings.length, 1)
 })
 
+test("runWithBrowser cleans up browser and server when work throws", async () => {
+  const events = []
+  const serverProc = { id: "proc" }
+  const browserStub = {
+    close: async () => events.push("close"),
+  }
+
+  await assert.rejects(
+    () =>
+      runWithBrowser(
+        { baseUrl: "http://127.0.0.1:45002" },
+        { rootDir: "/tmp", logger: { log() {}, warn() {} } },
+        async () => {
+          events.push("work")
+          throw new Error("work exploded")
+        },
+        {
+          loadPlaywright: async () => ({
+            chromium: { launch: async () => browserStub },
+            devices: {},
+          }),
+          ensureServer: async () => ({ proc: serverProc, baseUrl: "http://127.0.0.1:45002/" }),
+          runBrowserCleanup: async ({ browser, server }) => {
+            if (browser) await browser.close()
+            events.push(`stop:${server?.proc?.id ?? "none"}`)
+          },
+        }
+      ),
+    /work exploded/
+  )
+
+  assert.deepEqual(events, ["work", "close", "stop:proc"])
+})
+
 test("runWithBrowser invokes work and cleans up on success", async () => {
   const order = []
   const serverProc = { id: "proc" }
