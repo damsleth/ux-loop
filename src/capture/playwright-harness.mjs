@@ -522,6 +522,33 @@ async function prepareScreenshot(page, flow, options) {
   await page.waitForTimeout(flow.screenshot?.stabilizationDelayMs ?? options.stabilizationDelayMs ?? 200)
 }
 
+export function registerPlannedScreenshotPath({
+  plannedPaths,
+  resolvedScreenshotPath,
+  screenshotPath,
+  rawScreenshotName,
+  rawDeviceName,
+  flowLabel,
+}) {
+  const existing = plannedPaths.get(resolvedScreenshotPath)
+  const planned = { rawName: rawScreenshotName, rawDevice: rawDeviceName, flowLabel }
+  if (!existing) {
+    plannedPaths.set(resolvedScreenshotPath, planned)
+    return
+  }
+  const sameRaw =
+    existing.rawName === planned.rawName &&
+    existing.rawDevice === planned.rawDevice &&
+    existing.flowLabel === planned.flowLabel
+  if (sameRaw) return
+  throw new Error(
+    `Sanitized screenshot collision for ${screenshotPath}: ` +
+      `flow "${existing.flowLabel}" (name="${existing.rawName}", device="${existing.rawDevice}") ` +
+      `and flow "${planned.flowLabel}" (name="${planned.rawName}", device="${planned.rawDevice}") ` +
+      `both normalize to the same filename. Rename one of them to avoid overwriting artifacts.`
+  )
+}
+
 export function sanitizeArtifactFragment(value, { kind, context }) {
   const raw = String(value ?? "")
   const cleaned = raw
@@ -601,6 +628,17 @@ async function runFlow({ page, flow, baseUrl, shotsDir, deviceName, runtime, opt
     !resolvedScreenshotPath.startsWith(`${resolvedShotsDir}${path.sep}`)
   ) {
     throw new Error(`Screenshot path "${screenshotPath}" escapes shotsDir "${shotsDir}".`)
+  }
+
+  if (captureState.plannedPaths) {
+    registerPlannedScreenshotPath({
+      plannedPaths: captureState.plannedPaths,
+      resolvedScreenshotPath,
+      screenshotPath,
+      rawScreenshotName,
+      rawDeviceName: deviceName,
+      flowLabel,
+    })
   }
   await prepareScreenshot(page, flow, options)
 
@@ -716,6 +754,7 @@ export function createPlaywrightCaptureHarness(options = {}) {
         limitReached: false,
         limitLogged: false,
         logger,
+        plannedPaths: new Map(),
       }
 
       for (const flow of buildResolvedFlows(flows)) {

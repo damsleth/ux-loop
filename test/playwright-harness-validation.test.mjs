@@ -8,6 +8,7 @@ import {
   createPlaywrightCaptureHarness,
   ensureServer,
   isServerReadyResponse,
+  registerPlannedScreenshotPath,
   runBrowserCleanup,
   runWithBrowser,
   sanitizeArtifactFragment,
@@ -160,6 +161,66 @@ test("sanitizeArtifactFragment passes through ordinary names unchanged", () => {
   assert.equal(
     sanitizeArtifactFragment("iPhone.12", { kind: "device name", context: "flow" }),
     "iPhone.12"
+  )
+})
+
+test("registerPlannedScreenshotPath allows distinct resolved paths", () => {
+  const plannedPaths = new Map()
+  registerPlannedScreenshotPath({
+    plannedPaths,
+    resolvedScreenshotPath: "/shots/a-desktop.png",
+    screenshotPath: "/shots/a-desktop.png",
+    rawScreenshotName: "a",
+    rawDeviceName: "desktop",
+    flowLabel: "Alpha",
+  })
+  registerPlannedScreenshotPath({
+    plannedPaths,
+    resolvedScreenshotPath: "/shots/b-desktop.png",
+    screenshotPath: "/shots/b-desktop.png",
+    rawScreenshotName: "b",
+    rawDeviceName: "desktop",
+    flowLabel: "Beta",
+  })
+  assert.equal(plannedPaths.size, 2)
+})
+
+test("registerPlannedScreenshotPath is idempotent for identical raw tuples", () => {
+  const plannedPaths = new Map()
+  const args = {
+    plannedPaths,
+    resolvedScreenshotPath: "/shots/same-desktop.png",
+    screenshotPath: "/shots/same-desktop.png",
+    rawScreenshotName: "same",
+    rawDeviceName: "desktop",
+    flowLabel: "Home",
+  }
+  registerPlannedScreenshotPath(args)
+  assert.doesNotThrow(() => registerPlannedScreenshotPath(args))
+  assert.equal(plannedPaths.size, 1)
+})
+
+test("registerPlannedScreenshotPath throws when sanitized names collide across flows", () => {
+  const plannedPaths = new Map()
+  registerPlannedScreenshotPath({
+    plannedPaths,
+    resolvedScreenshotPath: "/shots/nested-name-desktop.png",
+    screenshotPath: "/shots/nested-name-desktop.png",
+    rawScreenshotName: "nested/name",
+    rawDeviceName: "desktop",
+    flowLabel: "Flow A",
+  })
+  assert.throws(
+    () =>
+      registerPlannedScreenshotPath({
+        plannedPaths,
+        resolvedScreenshotPath: "/shots/nested-name-desktop.png",
+        screenshotPath: "/shots/nested-name-desktop.png",
+        rawScreenshotName: "nested-name",
+        rawDeviceName: "desktop",
+        flowLabel: "Flow B",
+      }),
+    /Sanitized screenshot collision.*Flow A.*Flow B/s
   )
 })
 
