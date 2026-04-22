@@ -327,6 +327,62 @@ test("ensureServer merges startCommand.env into spawn environment", async () => 
   assert.equal(capturedSpawnOptions.env.PATH, "/usr/bin")
 })
 
+test("ensureServer fails fast with lsof hint when port is bound and reuseExistingServer=false", async () => {
+  const silentLogger = { log() {}, warn() {} }
+  let spawnCalls = 0
+
+  await assert.rejects(
+    () =>
+      ensureServer({
+        baseUrl: "http://127.0.0.1:44321",
+        timeoutMs: 200,
+        startCommand: { command: "fake", args: [] },
+        env: {},
+        cwd: process.cwd(),
+        logger: silentLogger,
+        spawnFn: () => {
+          spawnCalls += 1
+          return makeFakeProc()
+        },
+        waitForServerFn: async () => "http://127.0.0.1:44321/",
+      }),
+    (err) => {
+      assert.match(err.message, /already in use; refusing to reuse it/)
+      assert.match(err.message, /lsof -iTCP:44321 -sTCP:LISTEN/)
+      assert.match(err.message, /reuseExistingServer: true/)
+      return true
+    }
+  )
+  assert.equal(spawnCalls, 0, "must not spawn when port is already bound")
+})
+
+test("ensureServer reuses existing server when reuseExistingServer=true", async () => {
+  const silentLogger = { log() {}, warn() {} }
+  let verifyCalls = 0
+
+  const result = await ensureServer({
+    baseUrl: "http://127.0.0.1:44322",
+    timeoutMs: 200,
+    startCommand: { command: "fake", args: [] },
+    env: {},
+    cwd: process.cwd(),
+    logger: silentLogger,
+    spawnFn: () => {
+      throw new Error("should not spawn")
+    },
+    waitForServerFn: async () => "http://127.0.0.1:44322/",
+    reuseExistingServer: true,
+    expectTitleIncludes: "whatever",
+    verifyIdentityFn: async () => {
+      verifyCalls += 1
+    },
+  })
+
+  assert.equal(result.proc, null)
+  assert.equal(result.baseUrl, "http://127.0.0.1:44322/")
+  assert.equal(verifyCalls, 1, "identity check must still run on reused server")
+})
+
 test("ensureServer runs identity check against reused server and surfaces its failure", async () => {
   let stopCalled = false
   const silentLogger = { log() {}, warn() {} }
@@ -345,6 +401,7 @@ test("ensureServer runs identity check against reused server and surfaces its fa
         },
         waitForServerFn: async () => "http://127.0.0.1:15999/",
         expectTitleIncludes: "my-app",
+        reuseExistingServer: true,
         verifyIdentityFn: async () => {
           throw new Error("fingerprint mismatch on reused server")
         },

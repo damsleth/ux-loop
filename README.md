@@ -116,11 +116,19 @@ export default defineUxlConfig({
   capture: {
     runner: "playwright",
     baseUrl: "http://127.0.0.1:5173",
+    expectTitleIncludes: "my-app",
     flowInventory: [
       { id: "home", path: "/", required: true },
     ],
     flowMapping: {
       home: ["home"],
+    },
+    playwright: {
+      // default: false. ux-loop always starts its own dev server and fails
+      // fast if the port is already bound. Set to true only if you manage
+      // the server externally (CI, remote host) and accept responsibility
+      // for expectTitleIncludes matching the running app.
+      reuseExistingServer: false,
     },
   },
   review: {

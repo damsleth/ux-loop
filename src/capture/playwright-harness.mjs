@@ -247,6 +247,7 @@ async function ensureServer({
   waitForServerFn = waitForServer,
   expectTitleIncludes,
   verifyIdentityFn = verifyServerIdentity,
+  reuseExistingServer = false,
 }) {
   if (!baseUrl) return { proc: null, baseUrl }
 
@@ -255,13 +256,27 @@ async function ensureServer({
     await verifyIdentityFn({ baseUrl: readyUrl, expectTitleIncludes, logger })
   }
 
-  const alreadyReadyUrl = await waitForServerFn(baseUrl, 5000)
+  const alreadyReadyUrl = await waitForServerFn(baseUrl, reuseExistingServer ? 5000 : 1500)
   if (alreadyReadyUrl) {
-    logger?.log?.(
-      `Capture server already running at ${alreadyReadyUrl}; skipping startCommand (configured baseUrl: ${baseUrl})`
+    if (reuseExistingServer) {
+      logger?.log?.(
+        `Capture server already running at ${alreadyReadyUrl}; skipping startCommand (configured baseUrl: ${baseUrl})`
+      )
+      await runVerify(alreadyReadyUrl)
+      return { proc: null, baseUrl: alreadyReadyUrl }
+    }
+    const portHint = (() => {
+      try {
+        const parsed = new URL(baseUrl)
+        return parsed.port ? `\nRun: lsof -iTCP:${parsed.port} -sTCP:LISTEN` : ""
+      } catch {
+        return ""
+      }
+    })()
+    throw new Error(
+      `Port at ${baseUrl} is already in use; refusing to reuse it.${portHint}\n` +
+        `Or set capture.playwright.reuseExistingServer: true to opt in.`
     )
-    await runVerify(alreadyReadyUrl)
-    return { proc: null, baseUrl: alreadyReadyUrl }
   }
 
   const normalizedStart = normalizeStartCommand(startCommand)
@@ -809,6 +824,7 @@ export async function runWithBrowser(options, context, work, runtime = {}) {
     cwd: rootDir,
     logger,
     expectTitleIncludes: options.expectTitleIncludes ?? context.expectTitleIncludes,
+    reuseExistingServer: options.reuseExistingServer === true,
   })
 
   let browser = null

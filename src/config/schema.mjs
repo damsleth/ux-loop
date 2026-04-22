@@ -284,6 +284,12 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
   validateOptionalNonNegativeInteger(merged.capture.playwright.actionRetries, "capture.playwright.actionRetries")
   validateOptionalPositiveNumber(merged.capture.playwright.actionRetryBackoffMs, "capture.playwright.actionRetryBackoffMs")
   validateOptionalPositiveNumber(merged.capture.playwright.stabilizationDelayMs, "capture.playwright.stabilizationDelayMs")
+  if (
+    merged.capture.playwright.reuseExistingServer !== undefined &&
+    typeof merged.capture.playwright.reuseExistingServer !== "boolean"
+  ) {
+    throw new Error(`capture.playwright.reuseExistingServer must be boolean when set in ${configFilePath}.`)
+  }
   validateOptionalPositiveNumber(merged.run.maxIterations, "run.maxIterations")
   validateOptionalPositiveNumber(merged.run.scoreThreshold, "run.scoreThreshold")
 

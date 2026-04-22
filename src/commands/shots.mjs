@@ -76,6 +76,7 @@ export async function runShots(args = [], cwd = process.cwd(), runtime = {}) {
           baseUrl: config.capture.baseUrl,
           timeoutMs: config.capture.timeoutMs,
           expectTitleIncludes: config.capture.expectTitleIncludes,
+          reuseExistingServer: playwrightConfig.reuseExistingServer === true,
           startCommand: playwrightConfig.startCommand,
           devices: playwrightConfig.devices,
           flows: playwrightConfig.flows,

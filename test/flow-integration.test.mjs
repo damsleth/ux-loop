@@ -49,6 +49,7 @@ test("capture harness produces a non-empty screenshot for the fixture app", asyn
 
   const capture = createPlaywrightCaptureHarness({
     baseUrl,
+    reuseExistingServer: true,
     devices: [{ name: "desktop", width: 1280, height: 800 }],
     flows: [
       {
