@@ -13,10 +13,16 @@ function normalizeGroup(group) {
     throw new Error(`Capture group \"${label}\" must include a non-empty files array.`)
   }
 
-  return {
+  const normalized = {
     label,
     files: group.files.map((entry) => String(entry)),
   }
+
+  if (group.metrics !== undefined && group.metrics !== null) {
+    normalized.metrics = group.metrics
+  }
+
+  return normalized
 }
 
 export function writeManifest(manifestPath, groups) {

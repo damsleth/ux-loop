@@ -220,6 +220,69 @@ uxl implement --reasoning-effort high
 
 ---
 
+## Objective scoring
+
+Starting with v1.2.0, `uxl shots` injects lightweight probes into the captured pages to produce *objective metrics* alongside the LLM critique. `uxl review` then blends both signals into a composite score (0–100).
+
+### Score sources
+
+| source | when it applies |
+|--------|-----------------|
+| `blended` | manifest has per-group `metrics` **and** LLM prose is available |
+| `review-prose` | no metrics in manifest (default before v1.2.0 / metrics disabled) |
+| `objective` | metrics present but review disabled |
+
+Console output example:
+```
+Review complete. Review score: 78/100 (blended: objective 82, prose 72).
+```
+
+### What the probes collect
+
+**axe-core** (optional, requires `axe-core` installed as a dev dependency):
+- accessibility violation counts by impact: `critical`, `serious`, `moderate`, `minor`
+
+**Heuristics** (always active):
+- `viewportMeta` — whether `<meta name="viewport">` is present
+- `smallTapTargets` — interactive elements with bounding box < 44×44 px
+- `lowContrastSamples` — text elements with computed contrast ratio < 3:1
+- `fontSizeCount` — number of distinct font sizes in use
+
+### Configuration
+
+```js
+export default defineUxlConfig({
+  capture: {
+    // Set to false to disable all metric probes entirely.
+    // Default: true
+    metrics: true,
+  },
+  run: {
+    // Override the blend weights (must sum to ≤ 1; defaults are objective: 0.6, review: 0.4).
+    // Not a CLI flag — config only.
+    scoreWeights: { objective: 0.6, review: 0.4 },
+  },
+})
+```
+
+### axe-core — optional peer dependency
+
+axe-core is declared as an optional peer dependency. If it is not installed, uxl emits a single `warn` per capture run and continues without accessibility metrics.
+
+To enable it:
+```bash
+npm i -D axe-core
+```
+
+### Graceful degradation
+
+All of the following behave identically to v1.1.x (score source is `review-prose`):
+- `axe-core` is not installed
+- `capture.metrics: false` is set in config
+- The page crashes during the metrics probe
+
+---
+
 ## Logs
 
 All logs are stored in:

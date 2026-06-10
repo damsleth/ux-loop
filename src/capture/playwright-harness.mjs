@@ -785,6 +785,138 @@ function buildResolvedFlows(flows) {
       ]
 }
 
+let _axeWarnedThisRun = false
+
+/**
+ * Attempt to inject axe-core and run lightweight in-page heuristics on the
+ * given page.  Returns a metrics object or null if the probe fails / is
+ * disabled.  Exported for unit-testing.
+ */
+export async function runMetricsProbe(page, { logger, axeSource } = {}) {
+  // ── axe-core (optional) ─────────────────────────────────────────────────
+  let axeResults = null
+  try {
+    let source = axeSource
+    if (source === undefined) {
+      // lazy-import; axe-core is an optional peer dependency
+      try {
+        const axe = await import("axe-core")
+        source = (axe.default?.source ?? axe.source) || null
+      } catch {
+        source = null
+      }
+    }
+
+    if (source) {
+      await page.evaluate((script) => {
+        // eslint-disable-next-line no-new-func
+        new Function(script)()
+      }, source)
+
+      axeResults = await page.evaluate(async () => {
+        // axe is now on the window
+        const results = await window.axe.run(document, {
+          resultTypes: ["violations"],
+          runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] },
+        })
+        const counts = { critical: 0, serious: 0, moderate: 0, minor: 0 }
+        for (const v of results.violations) {
+          if (counts[v.impact] !== undefined) counts[v.impact] += v.nodes.length
+        }
+        return counts
+      })
+    } else {
+      if (!_axeWarnedThisRun) {
+        _axeWarnedThisRun = true
+        logger?.warn?.("axe-core not found; accessibility metrics will be skipped. Install axe-core as a dev dependency to enable.")
+      }
+    }
+  } catch {
+    if (!_axeWarnedThisRun) {
+      _axeWarnedThisRun = true
+      logger?.warn?.("axe-core probe failed; accessibility metrics will be skipped.")
+    }
+    axeResults = null
+  }
+
+  // ── in-page heuristics ───────────────────────────────────────────────────
+  let heuristics = null
+  try {
+    heuristics = await page.evaluate(() => {
+      const viewportMeta = Boolean(document.querySelector('meta[name="viewport"]'))
+
+      // small tap targets: interactive elements with bounding box < 44x44 px
+      const interactive = Array.from(
+        document.querySelectorAll("a, button, input, select, textarea, [role='button'], [role='link']")
+      )
+      let smallTapTargets = 0
+      for (const el of interactive) {
+        const rect = el.getBoundingClientRect()
+        if (rect.width > 0 && rect.height > 0 && (rect.width < 44 || rect.height < 44)) {
+          smallTapTargets += 1
+        }
+      }
+
+      // low-contrast samples: quick approximation via computed color vs background
+      // Only count elements with explicit inline background and foreground contrast
+      // that look suspicious (same-ish luminance).  Lightweight proxy only.
+      const textEls = Array.from(document.querySelectorAll("p, span, h1, h2, h3, h4, h5, h6, a, button, label"))
+        .slice(0, 200)
+      let lowContrastSamples = 0
+      for (const el of textEls) {
+        const style = window.getComputedStyle(el)
+        const color = style.color
+        const bg = style.backgroundColor
+        const toRgb = (s) => {
+          const m = s.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/)
+          if (!m) return null
+          // skip non-opaque backgrounds: the effective backdrop is unknown
+          if (m[4] !== undefined && Number(m[4]) < 1) return null
+          return [Number(m[1]), Number(m[2]), Number(m[3])]
+        }
+        const lum = ([r, g, b]) => {
+          const c = [r, g, b].map((v) => {
+            const s = v / 255
+            return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+          })
+          return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+        }
+        const fg = toRgb(color)
+        const bk = toRgb(bg)
+        if (fg && bk) {
+          const l1 = lum(fg)
+          const l2 = lum(bk)
+          const contrast = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)
+          if (contrast < 3) lowContrastSamples += 1
+        }
+      }
+
+      // font-size diversity
+      const fontSizes = new Set()
+      for (const el of textEls) {
+        const size = window.getComputedStyle(el).fontSize
+        if (size) fontSizes.add(size)
+      }
+
+      return {
+        viewportMeta,
+        smallTapTargets,
+        lowContrastSamples,
+        fontSizeCount: fontSizes.size,
+      }
+    })
+  } catch {
+    heuristics = null
+  }
+
+  if (!axeResults && !heuristics) return null
+
+  return {
+    ...(axeResults ? { axe: axeResults } : {}),
+    ...(heuristics ? { heuristics } : {}),
+  }
+}
+
 export async function runBrowserCleanup({ browser, server, logger, closeBrowser, stopServer }) {
   const close = closeBrowser || ((target) => target.close())
   const stop = stopServer || stopServerProcess
@@ -849,6 +981,7 @@ export function createPlaywrightCaptureHarness(options = {}) {
   validatePlaywrightCaptureDefinition(options)
   const devices = Array.isArray(options.devices) && options.devices.length > 0 ? options.devices : DEFAULT_DEVICES
   const flows = Array.isArray(options.flows) ? options.flows : []
+  const collectMetricsProbe = options._metricsProbe || runMetricsProbe
 
   return async function captureUx(context) {
     const shotsDir = context.shotsDir
@@ -856,7 +989,13 @@ export function createPlaywrightCaptureHarness(options = {}) {
       throw new Error("Capture context is missing shotsDir.")
     }
 
+    // reset the run-scoped axe warning so each captureUx invocation can warn once
+    _axeWarnedThisRun = false
+
     fs.mkdirSync(shotsDir, { recursive: true })
+
+    // metrics enabled unless explicitly set to false on the config passed via context
+    const metricsEnabled = context.metricsEnabled !== false
 
     return withBrowser(options, context, async ({ browser, playwrightDevices, logger, baseUrl }) => {
       const groups = []
@@ -876,6 +1015,8 @@ export function createPlaywrightCaptureHarness(options = {}) {
         }
 
         const files = []
+        let lastMetricsPage = null
+        let lastMetricsContext = null
 
         for (const rawDevice of devices) {
           const device = resolveDevice(rawDevice, playwrightDevices, options.maxResolution, logger)
@@ -885,6 +1026,7 @@ export function createPlaywrightCaptureHarness(options = {}) {
           })
           const page = await browserContext.newPage()
 
+          let keepForMetrics = false
           try {
             await ensureViewport(page, device.viewport)
             const screenshotPath = await runFlow({
@@ -904,8 +1046,19 @@ export function createPlaywrightCaptureHarness(options = {}) {
             if (screenshotPath) {
               files.push(screenshotPath)
             }
+            // keep the last successfully navigated page for the metrics probe
+            keepForMetrics = metricsEnabled
           } finally {
-            await browserContext.close()
+            if (keepForMetrics) {
+              // close any previously-saved metrics page before replacing it
+              if (lastMetricsContext) {
+                try { await lastMetricsContext.close() } catch { /* best-effort */ }
+              }
+              lastMetricsPage = page
+              lastMetricsContext = browserContext
+            } else {
+              await browserContext.close()
+            }
           }
 
           if (captureState.limitReached) {
@@ -913,11 +1066,24 @@ export function createPlaywrightCaptureHarness(options = {}) {
           }
         }
 
+        // ── metrics probe ────────────────────────────────────────────────────
+        let metrics = undefined
+        if (metricsEnabled && lastMetricsPage && lastMetricsContext) {
+          try {
+            metrics = await collectMetricsProbe(lastMetricsPage, { logger }) ?? undefined
+          } catch {
+            // probe failure must never abort the capture
+          } finally {
+            try { await lastMetricsContext.close() } catch { /* best-effort */ }
+          }
+        } else if (lastMetricsContext) {
+          try { await lastMetricsContext.close() } catch { /* best-effort */ }
+        }
+
         if (files.length > 0) {
-          groups.push({
-            label: flow.label,
-            files,
-          })
+          const group = { label: flow.label, files }
+          if (metrics !== undefined) group.metrics = metrics
+          groups.push(group)
         }
 
         if (captureState.limitReached) {

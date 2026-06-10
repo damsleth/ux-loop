@@ -75,3 +75,27 @@ test("writeManifest throws when group is not an object", () => {
     )
   })
 })
+
+test("writeManifest preserves metrics field when present on group", () => {
+  withTmp((tmpDir) => {
+    const metrics = {
+      axe: { critical: 0, serious: 1, moderate: 0, minor: 2 },
+      heuristics: { viewportMeta: true, smallTapTargets: 1, lowContrastSamples: 0, fontSizeCount: 3 },
+    }
+    const result = writeManifest(path.join(tmpDir, "m.json"), [
+      { label: "Home", files: ["a.png"], metrics },
+    ])
+    assert.deepEqual(result.groups[0].metrics, metrics)
+    const written = JSON.parse(fs.readFileSync(path.join(tmpDir, "m.json"), "utf8"))
+    assert.deepEqual(written.groups[0].metrics, metrics)
+  })
+})
+
+test("writeManifest omits metrics field when not provided", () => {
+  withTmp((tmpDir) => {
+    const result = writeManifest(path.join(tmpDir, "m.json"), [
+      { label: "Home", files: ["a.png"] },
+    ])
+    assert.equal("metrics" in result.groups[0], false)
+  })
+})

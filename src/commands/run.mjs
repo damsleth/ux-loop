@@ -230,6 +230,7 @@ export async function runPipeline(args = [], cwd = process.cwd(), runtime = {}) 
       initial_score: initialScore,
       final_score: finalScore,
       stop_reason: stopReason,
+      score_source: stepReports.reduce((last, entry) => entry.result?.scoreSource ?? last, null),
       steps: stepReports.map((entry) => ({
         step: entry.step,
         iteration: entry.iteration,

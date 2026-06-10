@@ -19,6 +19,7 @@ const DEFAULTS = {
     baseUrl: undefined,
     env: {},
     timeoutMs: 120000,
+    metrics: true,
     onboarding: {
       status: "pending",
     },
@@ -77,6 +78,7 @@ const DEFAULTS = {
     stopOnError: true,
     maxIterations: 1,
     scoreThreshold: 90,
+    scoreWeights: undefined,
   },
   style: undefined,
   limits: {
@@ -292,6 +294,23 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
   }
   validateOptionalPositiveNumber(merged.run.maxIterations, "run.maxIterations")
   validateOptionalPositiveNumber(merged.run.scoreThreshold, "run.scoreThreshold")
+
+  if (merged.capture.metrics !== undefined && typeof merged.capture.metrics !== "boolean") {
+    throw new Error(`capture.metrics must be boolean when set in ${configFilePath}.`)
+  }
+
+  if (merged.run.scoreWeights !== undefined) {
+    if (!isObject(merged.run.scoreWeights)) {
+      throw new Error(`run.scoreWeights must be an object when set in ${configFilePath}.`)
+    }
+    const { objective, review } = merged.run.scoreWeights
+    if (objective !== undefined && (!Number.isFinite(objective) || objective < 0 || objective > 1)) {
+      throw new Error(`run.scoreWeights.objective must be a number between 0 and 1 in ${configFilePath}.`)
+    }
+    if (review !== undefined && (!Number.isFinite(review) || review < 0 || review > 1)) {
+      throw new Error(`run.scoreWeights.review must be a number between 0 and 1 in ${configFilePath}.`)
+    }
+  }
 
   if (!isObject(merged.limits)) {
     throw new Error(`limits must be an object in ${configFilePath}.`)

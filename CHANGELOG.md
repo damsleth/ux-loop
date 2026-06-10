@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 - 2026-06-10
+
+- Added **objective scoring signal**: `uxl shots` now injects axe-core accessibility probes plus lightweight in-page heuristics (viewport meta, tap-target size, contrast samples, font-size diversity) after each screenshot group. Results land as a `metrics` object in the manifest.
+- Added `blendScores` composite: `uxl review` blends the objective per-group score (weight 0.6) with the existing LLM prose score (weight 0.4) into a single 0–100 `score`. Source reported as `"blended"`, `"review-prose"`, or `"objective"`.
+- New `run.scoreWeights` config option (`{ objective, review }`) to override blend weights. Config-only — not a CLI flag.
+- New `capture.metrics` config option (`boolean`, default `true`) to disable probes entirely.
+- JSON review artifacts now include `objective_score`, `prose_score`, `score_source` (snake_case) and `objectiveScore`, `proseScore`, `scoreSource` (camelCase).
+- Run pipeline report now includes `score_source`.
+- `axe-core` wired as optional peer dependency; missing axe-core degrades gracefully with a single warn per run.
+- When manifest has no metrics, behavior is byte-identical to v1.1.x (`score_source: "review-prose"`).
+
 ## 1.1.6 - 2026-04-22
 
 - Extended `uxl run` implement gating so implement is also skipped when `runShots=true` fails but `runReview=false`; the failing prerequisite now always short-circuits implement.
