@@ -181,3 +181,83 @@ test("runPipeline splits shared flags by command", async () => {
   assert.deepEqual(seenReviewArgs, ["--runner", "openai"])
   assert.deepEqual(seenImplementArgs, ["--target", "branch"])
 })
+
+test("runPipeline stops when blended score meets threshold", async () => {
+  const artifacts = []
+
+  const result = await runPipeline([], "/tmp/project", {
+    loadConfig: async () =>
+      createBaseConfig({ runShots: false, runImplement: false, scoreThreshold: 80 }),
+    runShots: async () => {},
+    runReview: async () => ({
+      score: 82,
+      scoreSource: "blended",
+      objectiveScore: 90,
+      proseScore: 70,
+      totalIssues: 1,
+      issues: { critical: 0, major: 1, minor: 0 },
+    }),
+    runImplement: async () => {},
+    errorLogger: () => {},
+    writeJsonArtifact: ({ payload }) => {
+      artifacts.push(payload)
+      return "/tmp/report.json"
+    },
+  })
+
+  assert.equal(result.stopReason, "score threshold met (82/80)")
+  assert.equal(artifacts[0].score_source, "blended")
+})
+
+test("runPipeline stop condition uses blended score from reviewResult.score", async () => {
+  // score=75 does not meet threshold=80, score=85 does
+  let callCount = 0
+
+  const result = await runPipeline([], "/tmp/project", {
+    loadConfig: async () =>
+      createBaseConfig({ runShots: false, runImplement: true, maxIterations: 5, scoreThreshold: 80 }),
+    runShots: async () => {},
+    runReview: async () => {
+      callCount += 1
+      const score = callCount === 1 ? 75 : 85
+      return {
+        score,
+        scoreSource: "blended",
+        objectiveScore: 90,
+        proseScore: score - 10,
+        totalIssues: 1,
+        issues: { critical: 0, major: 1, minor: 0 },
+      }
+    },
+    runImplement: async () => {},
+    errorLogger: () => {},
+    writeJsonArtifact: () => "/tmp/report.json",
+  })
+
+  assert.equal(result.stopReason, "score threshold met (85/80)")
+})
+
+test("runPipeline score_source in report reflects last review result", async () => {
+  const artifacts = []
+
+  await runPipeline([], "/tmp/project", {
+    loadConfig: async () => createBaseConfig({ runShots: false, runImplement: false }),
+    runShots: async () => {},
+    runReview: async () => ({
+      score: 75,
+      scoreSource: "review-prose",
+      objectiveScore: null,
+      proseScore: 75,
+      totalIssues: 1,
+      issues: { critical: 0, major: 1, minor: 0 },
+    }),
+    runImplement: async () => {},
+    errorLogger: () => {},
+    writeJsonArtifact: ({ payload }) => {
+      artifacts.push(payload)
+      return "/tmp/report.json"
+    },
+  })
+
+  assert.equal(artifacts[0].score_source, "review-prose")
+})

@@ -11,6 +11,7 @@ import { createCommandLogger } from "../utils/command-logger.mjs"
 import { parseCliOptions } from "../utils/parse-cli-options.mjs"
 import { validateReasoningEffort } from "../utils/reasoning-effort.mjs"
 import { buildReviewScoreSummary, computeReviewScore } from "../utils/review-score.mjs"
+import { blendScores, buildObjectiveScoreSummary } from "../utils/objective-score.mjs"
 
 export const REVIEW_VALUE_OPTIONS = new Set(["runner", "model", "reasoning-effort", "image-detail", "prompt-file", "style"])
 const REVIEW_BOOLEAN_OPTIONS = new Set(["no-limits"])
@@ -293,14 +294,24 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
   }
 
   const totalIssues = aggregateIssues.critical + aggregateIssues.major + aggregateIssues.minor
-  const score = totalIssues === 0 ? 100 : computeReviewScore(aggregateIssues)
+  const proseScore = totalIssues === 0 ? 100 : computeReviewScore(aggregateIssues)
 
-  report.splice(
-    7,
-    0,
-    `Review score: ${score}/100 (${aggregateIssues.critical} critical, ${aggregateIssues.major} major, ${aggregateIssues.minor} minor)`,
-    ""
-  )
+  const objectiveScore = buildObjectiveScoreSummary(manifest.groups)
+  const scoreWeights = config.run?.scoreWeights
+  const blended = blendScores({ objective: objectiveScore, review: proseScore, weights: scoreWeights })
+  const score = blended.score
+  const scoreSource = blended.source
+
+  let scoreHeader
+  if (scoreSource === "blended") {
+    scoreHeader = `Review score: ${score}/100 (blended: objective ${objectiveScore}, prose ${proseScore})`
+  } else if (scoreSource === "objective") {
+    scoreHeader = `Review score: ${score}/100 (objective)`
+  } else {
+    scoreHeader = `Review score: ${score}/100 (${aggregateIssues.critical} critical, ${aggregateIssues.major} major, ${aggregateIssues.minor} minor)`
+  }
+
+  report.splice(7, 0, scoreHeader, "")
 
   fs.mkdirSync(path.dirname(reportOutputPath), { recursive: true })
   const reportBody = `${report.join("\n")}\n`
@@ -329,20 +340,22 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
           groups_processed: groups.length,
           issues: aggregateIssues,
           score,
+          objective_score: objectiveScore ?? null,
+          prose_score: proseScore,
+          score_source: scoreSource,
+          objectiveScore: objectiveScore ?? null,
+          proseScore,
+          scoreSource,
           group_details: stepDetails,
         },
       ],
     },
   })
   logger.log(`Finished review for ${groups.length} groups`)
-  logger.log(
-    `Summary: Review score ${score}/100 (${aggregateIssues.critical} critical, ${aggregateIssues.major} major, ${aggregateIssues.minor} minor)`
-  )
+  logger.log(`Summary: ${scoreHeader}`)
   logger.log(`Report written: ${reportOutputPath}`)
   logger.log(`Structured report written: ${reportJsonPath}`)
-  console.log(
-    `Review complete. Review score: ${score}/100 (${aggregateIssues.critical} critical, ${aggregateIssues.major} major, ${aggregateIssues.minor} minor).`
-  )
+  console.log(`Review complete. ${scoreHeader}.`)
   console.log(`Report: ${reportOutputPath}`)
 
   return {
@@ -350,6 +363,9 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
     reportPath: reportOutputPath,
     reportJsonPath,
     score,
+    objectiveScore: objectiveScore ?? null,
+    proseScore,
+    scoreSource,
     issues: aggregateIssues,
     totalIssues,
     runner,

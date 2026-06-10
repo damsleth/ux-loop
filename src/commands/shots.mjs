@@ -103,6 +103,7 @@ export async function runShots(args = [], cwd = process.cwd(), runtime = {}) {
       env: { ...process.env, ...(config.capture.env || {}) },
       timeoutMs: config.capture.timeoutMs,
       expectTitleIncludes: config.capture.expectTitleIncludes,
+      metricsEnabled: config.capture.metrics !== false,
     })
 
     if (!Array.isArray(groups) || groups.length === 0) {
