@@ -49,6 +49,9 @@ const DEFAULTS = {
     copilot: {
       bin: "copilot",
     },
+    claude: {
+      bin: "claude",
+    },
     openai: {
       apiKeyEnv: "OPENAI_API_KEY",
       imageDetail: "high",
@@ -68,6 +71,9 @@ const DEFAULTS = {
     copilot: {
       bin: "copilot",
     },
+    claude: {
+      bin: "claude",
+    },
     model: undefined,
     reasoningEffort: undefined,
   },
@@ -79,6 +85,7 @@ const DEFAULTS = {
     maxIterations: 1,
     scoreThreshold: 90,
     scoreWeights: undefined,
+    keepBest: true,
   },
   style: undefined,
   limits: {
@@ -273,8 +280,8 @@ export function normalizeConfig(input, configFilePath = path.resolve(process.cwd
     }
   }
 
-  validateEnum(merged.review.runner, ["codex", "copilot", "openai"], "review.runner")
-  validateEnum(merged.implement.runner, ["codex", "copilot"], "implement.runner")
+  validateEnum(merged.review.runner, ["codex", "copilot", "openai", "claude"], "review.runner")
+  validateEnum(merged.implement.runner, ["codex", "copilot", "claude"], "implement.runner")
   validateEnum(merged.implement.target, ["current", "branch", "worktree"], "implement.target")
   validateEnum(merged.implement.scope, ["css-only", "text-only", "layout-safe", "unrestricted"], "implement.scope")
   validateOptionalEnum(merged.review.reasoningEffort, ["low", "medium", "high", "extraHigh"], "review.reasoningEffort")

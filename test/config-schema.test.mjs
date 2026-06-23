@@ -45,6 +45,23 @@ test("normalizeConfig accepts copilot runners", () => {
   assert.equal(config.implement.runner, "copilot")
 })
 
+test("normalizeConfig defaults run.keepBest to true and accepts an override", () => {
+  assert.equal(normalizeConfig({}).run.keepBest, true)
+  assert.equal(normalizeConfig({ run: { keepBest: false } }).run.keepBest, false)
+})
+
+test("normalizeConfig accepts claude runners and exposes claude bin defaults", () => {
+  const config = normalizeConfig({
+    review: { runner: "claude" },
+    implement: { runner: "claude" },
+  })
+
+  assert.equal(config.review.runner, "claude")
+  assert.equal(config.implement.runner, "claude")
+  assert.equal(config.review.claude.bin, "claude")
+  assert.equal(config.implement.claude.bin, "claude")
+})
+
 test("normalizeConfig accepts reasoning effort values", () => {
   const config = normalizeConfig({
     review: { reasoningEffort: "extraHigh" },

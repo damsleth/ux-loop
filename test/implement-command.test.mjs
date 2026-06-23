@@ -436,6 +436,79 @@ test("runImplement auto-commits when enabled", async () => {
   }
 })
 
+test("runImplement routes to the claude runner when implement.runner is claude", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-implement-claude-"))
+  const reportPath = path.join(dir, "report.md")
+  fs.writeFileSync(reportPath, "# report", "utf8")
+
+  let claudeArgs = null
+  let codexCalled = false
+
+  try {
+    await runImplement(["--yes"], dir, {
+      loadConfig: async () => ({
+        paths: { root: dir, reportPath },
+        implement: {
+          runner: "claude",
+          target: "current",
+          autoCommit: false,
+          timeoutMs: 1000,
+          codex: { bin: "codex" },
+          copilot: { bin: "copilot" },
+          claude: { bin: "claude" },
+        },
+      }),
+      assertCommandAvailable: () => {},
+      resolveTarget: () => ({ workDir: dir, branchName: "main", summary: "Target: current branch" }),
+      runClaudeImplement: (opts) => { claudeArgs = opts },
+      runCodexImplement: () => { codexCalled = true },
+      runCommand: () => ({ stdout: "" }),
+    })
+
+    assert.ok(claudeArgs, "claude implement runner must be invoked")
+    assert.equal(claudeArgs.claudeBin, "claude")
+    assert.equal(claudeArgs.workDir, dir)
+    assert.equal(codexCalled, false, "codex runner must not run for claude runner")
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("runImplement rejects an invalid implement.runner listing claude as allowed", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-implement-badrunner-"))
+  const reportPath = path.join(dir, "report.md")
+  fs.writeFileSync(reportPath, "# report", "utf8")
+
+  try {
+    await assert.rejects(
+      () =>
+        runImplement(["--yes"], dir, {
+          loadConfig: async () => ({
+            paths: { root: dir, reportPath },
+            implement: {
+              runner: "banana",
+              target: "current",
+              autoCommit: false,
+              timeoutMs: 1000,
+              codex: { bin: "codex" },
+              copilot: { bin: "copilot" },
+              claude: { bin: "claude" },
+            },
+          }),
+          assertCommandAvailable: () => {},
+          runCommand: () => ({ stdout: "" }),
+        }),
+      (err) => {
+        assert.ok(/banana/.test(err.message))
+        assert.ok(/claude/.test(err.message), `expected claude in allowed list: ${err.message}`)
+        return true
+      }
+    )
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test("runImplement includes untracked files in diff stats and scope validation", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-implement-untracked-"))
   const reportPath = path.join(dir, "report.md")

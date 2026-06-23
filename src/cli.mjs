@@ -23,7 +23,7 @@ Usage:
   uxl diff [implement flags]          (requires LLM runner; generates patch without applying)
   uxl apply [<patch-path>] [--commit]
   uxl rollback [--list] [--to <timestamp>] [--yes]
-  uxl report [--left <report.json> --right <report.json>]
+  uxl report [--left <report.json> --right <report.json>] [--format console|github|markdown] [--fail-under <1-100>]
   uxl run [--iterations <1-10>] [--score-threshold <1-100>] [review/implement/shots flags]
 `)
 }
@@ -85,7 +85,10 @@ async function main() {
     }
 
     if (command === "report") {
-      await runReport(args, workspaceCwd)
+      const result = await runReport(args, workspaceCwd)
+      if (result?.belowThreshold) {
+        process.exitCode = 2
+      }
       return
     }
 

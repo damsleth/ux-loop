@@ -10,6 +10,7 @@ import { buildDefaultImplementPrompt } from "../prompts/default-implement-prompt
 import { loadStylePreset } from "../prompts/load-style-preset.mjs"
 import { runCodexImplement } from "../runners/implement-codex.mjs"
 import { runCopilotImplement } from "../runners/implement-copilot.mjs"
+import { runClaudeImplement } from "../runners/implement-claude.mjs"
 import { buildTimestampedArtifactName, writeJsonArtifact } from "../utils/artifacts.mjs"
 import { parseNumstat } from "../utils/diff-stats.mjs"
 import { parseCliOptions } from "../utils/parse-cli-options.mjs"
@@ -331,6 +332,7 @@ async function generatePatch({
   runSyncCommand,
   runCodex,
   runCopilot,
+  runClaude,
 }) {
   const runner = (config.implement.runner || "codex").toLowerCase()
   const model = overrides.model || config.implement.model
@@ -347,6 +349,14 @@ async function generatePatch({
     if (runner === "copilot") {
       runCopilot({
         copilotBin: config.implement.copilot.bin,
+        model,
+        timeoutMs: config.implement.timeoutMs,
+        workDir: prepared.workDir,
+        prompt,
+      })
+    } else if (runner === "claude") {
+      runClaude({
+        claudeBin: config.implement.claude.bin,
         model,
         timeoutMs: config.implement.timeoutMs,
         workDir: prepared.workDir,
@@ -397,6 +407,7 @@ export async function runImplement(args = [], cwd = process.cwd(), runtime = {})
   const ensureCommand = runtime.assertCommandAvailable || assertCommandAvailable
   const runCodex = runtime.runCodexImplement || runCodexImplement
   const runCopilot = runtime.runCopilotImplement || runCopilotImplement
+  const runClaude = runtime.runClaudeImplement || runClaudeImplement
   const runSyncCommand = runtime.runCommand || runCommand
   const writeArtifact = runtime.writeJsonArtifact || writeJsonArtifact
   const writeSnapshotFile = runtime.writeSnapshot || writeSnapshot
@@ -412,11 +423,16 @@ export async function runImplement(args = [], cwd = process.cwd(), runtime = {})
   const config = await load(cwd)
   const runner = (config.implement.runner || "codex").toLowerCase()
   validateReasoningEffort(overrides.reasoningEffort, "--reasoning-effort")
-  if (!["codex", "copilot"].includes(runner)) {
-    throw new Error(`Invalid implement.runner: "${runner}". Allowed: codex, copilot.`)
+  if (!["codex", "copilot", "claude"].includes(runner)) {
+    throw new Error(`Invalid implement.runner: "${runner}". Allowed: codex, copilot, claude.`)
   }
 
-  const bin = runner === "copilot" ? config.implement.copilot.bin : config.implement.codex.bin
+  const bin =
+    runner === "copilot"
+      ? config.implement.copilot.bin
+      : runner === "claude"
+        ? config.implement.claude.bin
+        : config.implement.codex.bin
   ensureCommand(bin)
   ensureInsideGitRepo(config.paths.root, runSyncCommand)
   const initialRepoState = readRepoState(config.paths.root, runSyncCommand)
@@ -473,6 +489,7 @@ export async function runImplement(args = [], cwd = process.cwd(), runtime = {})
       runSyncCommand,
       runCodex,
       runCopilot,
+      runClaude,
     })
     const reportJsonPath = writeArtifact({
       dir: config.paths.reportsDir || path.join(config.paths.root, ".uxl", "reports"),
@@ -534,6 +551,14 @@ export async function runImplement(args = [], cwd = process.cwd(), runtime = {})
     if (runner === "copilot") {
       runCopilot({
         copilotBin: config.implement.copilot.bin,
+        model: overrides.model || config.implement.model,
+        timeoutMs: config.implement.timeoutMs,
+        workDir: prepared.workDir,
+        prompt,
+      })
+    } else if (runner === "claude") {
+      runClaude({
+        claudeBin: config.implement.claude.bin,
         model: overrides.model || config.implement.model,
         timeoutMs: config.implement.timeoutMs,
         workDir: prepared.workDir,

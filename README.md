@@ -161,11 +161,19 @@ If you choose `--target current` or `--target branch`, start from a clean workin
 
 ## Runners
 
-Supported:
+| Runner | Review | Implement | Auth |
+|---|:---:|:---:|---|
+| `codex` (default) | ✅ | ✅ | codex CLI login |
+| `copilot` | ✅ | ✅ | copilot CLI login |
+| `claude` | ✅ | ✅ | `claude` CLI subscription locally; `ANTHROPIC_API_KEY` for headless/CI |
+| `openai` | ✅ | — | `OPENAI_API_KEY` (requires `npm i openai`) |
 
-- `codex` (default)
-- `copilot`
-- `openai` (requires `npm i openai`)
+Set the runner per phase in config (`review.runner`, `implement.runner`) or pass
+`--runner <name>` to `uxl review` / `uxl run` (review phase). The `claude` runner
+shells out to the installed `claude` CLI — no `@anthropic-ai/sdk` dependency, no
+raw API calls. Review restricts the agent to its `Read` tool; implement allows
+`Read,Edit,Write,Glob,Grep` (no `Bash`, enforcing file-only edits) under
+`--permission-mode acceptEdits`.
 
 ---
 
@@ -217,6 +225,76 @@ Advanced:
 uxl review --reasoning-effort high
 uxl implement --reasoning-effort high
 ```
+
+---
+
+## CI / GitHub Action
+
+Run shots + review on every pull request and post the UX score as a sticky
+comment with the in-repo composite action:
+
+```yaml
+name: UX review
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write   # required for the sticky comment
+jobs:
+  uxl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: damsleth/ux-loop@v1
+        with:
+          fail-under: 70
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+The action runs `uxl shots` then `uxl review` and **never implements** — CI must
+not mutate code. It posts/updates one sticky comment (anchored on a hidden
+`<!-- uxl-report -->` marker), uploads `.uxl/shots` + `.uxl/reports` as
+artifacts, and optionally fails the check via `fail-under`.
+
+| input | default | notes |
+|---|---|---|
+| `working-directory` | `.` | where the target app lives (`uxl.config.mjs` is resolved here) |
+| `runner` | `claude` | passed as `--runner` |
+| `model` | `` | passed as `--model` when set |
+| `fail-under` | `0` | `0` = report-only; otherwise fail when the blended score is below `N` |
+| `comment` | `true` | post/update the sticky PR comment |
+| `node-version` | `22` | engines require >= 22 |
+
+Auth (set as job `env`, not inputs): `ANTHROPIC_API_KEY` for the `claude` runner
+(the documented default), `OPENAI_API_KEY` for `openai`. The action preflights
+the selected runner's credential and fails fast with a clear message if it's
+missing. The action resolves via git tags — pin `@v1` (a moving major tag
+maintained on releases). A ready-to-copy workflow lives at
+[`examples/uxl-pr-review.yml`](examples/uxl-pr-review.yml).
+
+`uxl report --format github` (used by the action) prints the same sticky-comment
+markdown to stdout locally; `--fail-under <1-100>` exits with code `2` when the
+latest report's score is below the threshold.
+
+---
+
+## Convergence loop & keep-best
+
+`uxl run` iterates shots → review → implement up to `run.maxIterations`, stopping
+when the score meets `run.scoreThreshold`, no issues remain, or a score fails to
+improve over the previous iteration.
+
+Because an implement step can occasionally make the UI *worse*, the loop keeps a
+**best-iteration acceptance gate** (`run.keepBest`, default `true`): when the run
+ends below its best observed iteration, the working tree is restored to that best
+iteration's state. A regressing multi-iteration run can therefore never end worse
+than its best point. The JSON report records `kept_iteration`, `best_score`, and
+`restored` (`true` / `false` / `"skipped"` / `"failed"`).
+
+- Disable per-run with `uxl run --no-keep-best`, or globally with `run.keepBest: false`.
+- No-op for review-only runs, single-iteration runs, and `worktree` implement
+  targets (whose iterations don't compound). If the restore itself fails, the run
+  still reports and prints a manual `uxl rollback --yes --to <timestamp>` hint.
 
 ---
 
