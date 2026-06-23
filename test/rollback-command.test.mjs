@@ -27,8 +27,8 @@ function makeRuntime(snapshotsDir, gitResponses = {}) {
 test("runRollback --list shows available snapshots", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-rollback-list-"))
   try {
-    writeSnapshot(dir, { createdAt: "2026-01-01T10:00:00Z", targetMode: "worktree", branchName: "uxl-1", workDir: dir, repoRoot: dir, head: "abc", originalBranch: "main", dirtyBeforeRun: false, stashRef: null })
-    writeSnapshot(dir, { createdAt: "2026-01-01T11:00:00Z", targetMode: "branch", branchName: "uxl-2", workDir: dir, repoRoot: dir, head: "def", originalBranch: "main", dirtyBeforeRun: false, stashRef: null })
+    writeSnapshot(dir, { createdAt: "2026-01-01T10:00:00Z", targetMode: "worktree", branchName: "uxl-1", workDir: dir, repoRoot: dir, head: "abc", originalBranch: "main", dirtyBeforeRun: false, stashRef: null }, new Date(2026, 0, 1, 10, 0, 0))
+    writeSnapshot(dir, { createdAt: "2026-01-01T11:00:00Z", targetMode: "branch", branchName: "uxl-2", workDir: dir, repoRoot: dir, head: "def", originalBranch: "main", dirtyBeforeRun: false, stashRef: null }, new Date(2026, 0, 1, 11, 0, 0))
 
     const result = await runRollback(["--list"], "/tmp", makeRuntime(dir))
 

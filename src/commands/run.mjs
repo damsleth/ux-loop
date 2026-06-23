@@ -3,10 +3,11 @@ import { IMPLEMENT_OPTION_NAMES, IMPLEMENT_VALUE_OPTIONS, runImplement } from ".
 import { REVIEW_OPTION_NAMES, REVIEW_VALUE_OPTIONS, runReview } from "./review.mjs"
 import { SHOTS_OPTION_NAMES, runShots } from "./shots.mjs"
 import { writeJsonArtifact } from "../utils/artifacts.mjs"
+import { restoreToSnapshot } from "../git/restore.mjs"
 import path from "path"
 
 const RUN_VALUE_OPTIONS = new Set(["iterations", "score-threshold"])
-const RUN_BOOLEAN_OPTIONS = new Set()
+const RUN_BOOLEAN_OPTIONS = new Set(["no-keep-best"])
 
 function readFlagValue(args, index, key) {
   const token = args[index]
@@ -25,7 +26,13 @@ function splitPipelineArgs(args) {
   const reviewArgs = []
   const implementArgs = []
   const runOptions = {}
-  const known = new Set([...SHOTS_OPTION_NAMES, ...REVIEW_OPTION_NAMES, ...IMPLEMENT_OPTION_NAMES, ...RUN_VALUE_OPTIONS])
+  const known = new Set([
+    ...SHOTS_OPTION_NAMES,
+    ...REVIEW_OPTION_NAMES,
+    ...IMPLEMENT_OPTION_NAMES,
+    ...RUN_VALUE_OPTIONS,
+    ...RUN_BOOLEAN_OPTIONS,
+  ])
 
   for (let i = 0; i < args.length; i += 1) {
     const token = args[i]
@@ -88,10 +95,21 @@ export async function runPipeline(args = [], cwd = process.cwd(), runtime = {}) 
   const runImplementStep = runtime.runImplement || runImplement
   const errorLogger = runtime.errorLogger || console.error
   const writeArtifact = runtime.writeJsonArtifact || writeJsonArtifact
+  const restore = runtime.restoreToSnapshot || restoreToSnapshot
   const config = await load(cwd)
   const { shotsArgs, reviewArgs, implementArgs, runOptions } = splitPipelineArgs(args)
   const iterations = normalizeIterations(runOptions.iterations, config.run.maxIterations || 1)
   const scoreThreshold = normalizeScoreThreshold(runOptions["score-threshold"], config.run.scoreThreshold || 90)
+  const keepBest = config.run.keepBest !== false && !runOptions["no-keep-best"]
+
+  // Keep-best gate state. A review at iteration k scores the UI produced by
+  // implement_(k-1); the snapshot implement_(k-1) wrote captures the *pre*-impl
+  // state, so to keep the best iteration B we restore record[B+1]'s snapshot
+  // (the snapshot implement_B wrote = the exact UI that review_B scored).
+  const iterationResults = []
+  let bestIteration = { iteration: null, score: -Infinity }
+  let pendingImplement = null // { snapshotPath, targetMode } from the previous iteration's implement
+  let anyImplementSucceeded = false
 
   const stepReports = []
   let iterationsRun = 0
@@ -168,6 +186,17 @@ export async function runPipeline(args = [], cwd = process.cwd(), runtime = {}) 
             if (initialScore === null && reviewResult?.score !== undefined) {
               initialScore = reviewResult.score
             }
+            if (reviewResult?.score !== undefined && reviewResult?.score !== null) {
+              iterationResults.push({
+                iteration,
+                score: reviewResult.score,
+                implementSnapshotPath: pendingImplement?.snapshotPath ?? null,
+                targetMode: pendingImplement?.targetMode ?? null,
+              })
+              if (reviewResult.score > bestIteration.score) {
+                bestIteration = { iteration, score: reviewResult.score }
+              }
+            }
           }
         }
       }
@@ -195,7 +224,14 @@ export async function runPipeline(args = [], cwd = process.cwd(), runtime = {}) 
         } else if (config.run.runReview && reviewOutcome.status !== "success") {
           recordSkipped(iteration, "implement", "upstream review step did not succeed")
         } else {
-          await runStep(iteration, "implement", () => runImplementStep(implementArgs, cwd))
+          const implementOutcome = await runStep(iteration, "implement", () => runImplementStep(implementArgs, cwd))
+          if (implementOutcome.status === "success" && implementOutcome.result?.snapshotPath) {
+            pendingImplement = {
+              snapshotPath: implementOutcome.result.snapshotPath,
+              targetMode: implementOutcome.result.targetMode ?? null,
+            }
+            anyImplementSucceeded = true
+          }
         }
       }
     }
@@ -216,6 +252,39 @@ export async function runPipeline(args = [], cwd = process.cwd(), runtime = {}) 
   console.log(`Pipeline completed: ${exitState} (${summary})`)
   console.log(`Iterations run: ${iterationsRun}. Stop reason: ${stopReason}.`)
 
+  // Keep-best acceptance gate: if a later iteration regressed below an earlier
+  // one, restore the working tree to the best iteration's state. Inert for
+  // review-only runs, single-iteration runs, or when no implement produced a
+  // snapshot. worktree targets don't compound iterations, so the gate is a no-op.
+  const keptIteration = bestIteration.iteration
+  const bestScore = bestIteration.score === -Infinity ? null : bestIteration.score
+  let restored = false
+  const lastReviewed = iterationResults.length ? iterationResults[iterationResults.length - 1].iteration : null
+  const gateEligible = keepBest && config.run.runImplement && iterationsRun >= 2 && anyImplementSucceeded
+
+  if (gateEligible && keptIteration !== null && lastReviewed !== null && keptIteration < lastReviewed) {
+    const restoreRecord = iterationResults.find((entry) => entry.iteration === keptIteration + 1)
+    if (restoreRecord && restoreRecord.implementSnapshotPath) {
+      if (restoreRecord.targetMode === "worktree") {
+        console.log("keep-best: skipped (worktree target does not compound iterations)")
+        restored = "skipped"
+      } else {
+        try {
+          restore({ snapshotPath: restoreRecord.implementSnapshotPath, runtime })
+          restored = true
+          console.log(`Best iteration kept: #${keptIteration} (score ${bestScore}). Restored working tree from snapshot ${restoreRecord.implementSnapshotPath}.`)
+        } catch (err) {
+          restored = "failed"
+          const message = err instanceof Error ? err.message : String(err)
+          errorLogger(`keep-best restore failed: ${message}`)
+          errorLogger("Restore manually with: uxl rollback --yes --to <timestamp>")
+        }
+      }
+    }
+  } else if (gateEligible && keptIteration !== null && lastReviewed !== null && keptIteration >= lastReviewed) {
+    console.log("Final iteration was the best — nothing to restore.")
+  }
+
   const reportJsonPath = writeArtifact({
     dir: config.paths?.reportsDir || path.join(cwd, ".uxl", "reports"),
     prefix: "uxl_report",
@@ -229,6 +298,9 @@ export async function runPipeline(args = [], cwd = process.cwd(), runtime = {}) 
       iteration: iterationsRun,
       initial_score: initialScore,
       final_score: finalScore,
+      kept_iteration: keptIteration,
+      best_score: bestScore,
+      restored,
       stop_reason: stopReason,
       score_source: stepReports.reduce((last, entry) => entry.result?.scoreSource ?? last, null),
       steps: stepReports.map((entry) => ({
@@ -257,6 +329,9 @@ export async function runPipeline(args = [], cwd = process.cwd(), runtime = {}) 
     iterationsRun,
     initialScore,
     finalScore,
+    keptIteration,
+    bestScore,
+    restored,
     stopReason,
     reportJsonPath,
   }

@@ -1,7 +1,7 @@
 import { loadConfig } from "../config/load-config.mjs"
-import { assertCleanWorktree } from "../git/working-tree.mjs"
 import { cleanupWorktreeTarget } from "../git/target-resolver.mjs"
 import { listSnapshots, readSnapshot } from "../git/snapshots.mjs"
+import { restoreSnapshot } from "../git/restore.mjs"
 import { runCommand } from "../utils/process.mjs"
 
 function parseRollbackArgs(args) {
@@ -64,28 +64,11 @@ export async function runRollback(args = [], cwd = process.cwd(), runtime = {}) 
   }
 
   const { snapshot } = readSnapshot(config.paths.snapshotsDir, options.to)
-  if (snapshot.targetMode === "worktree") {
-    cleanupTarget({
-      repoRoot: snapshot.repoRoot,
-      workDir: snapshot.workDir,
-      branchName: snapshot.branchName,
-    })
-  } else if (snapshot.targetMode === "branch") {
-    runSyncCommand("git", ["switch", snapshot.originalBranch], { cwd: snapshot.repoRoot, stdio: "inherit" })
-    if (snapshot.branchName) {
-      try {
-        runSyncCommand("git", ["branch", "-d", snapshot.branchName], { cwd: snapshot.repoRoot })
-      } catch {
-        console.warn(`Warning: could not delete branch ${snapshot.branchName} (may have unmerged changes or already be deleted).`)
-      }
-    }
-  } else {
-    assertCleanWorktree(snapshot.repoRoot, {
-      runSyncCommand,
-      label: "Rollback",
-    })
-    runSyncCommand("git", ["reset", "--hard", snapshot.head], { cwd: snapshot.repoRoot, stdio: "inherit" })
-  }
+  restoreSnapshot({
+    snapshot,
+    runtime: { runCommand: runSyncCommand, cleanupTarget },
+    label: "Rollback",
+  })
 
   console.log(`Rolled back snapshot: ${snapshot.createdAt}`)
   return {

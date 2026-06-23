@@ -5,6 +5,7 @@ import { buildDefaultReviewPrompt } from "../prompts/default-review-prompt.mjs"
 import { loadStylePreset } from "../prompts/load-style-preset.mjs"
 import { assertCodexReady, reviewWithCodex } from "../runners/review-codex.mjs"
 import { assertCopilotReady, reviewWithCopilot } from "../runners/review-copilot.mjs"
+import { assertClaudeReady, reviewWithClaude } from "../runners/review-claude.mjs"
 import { reviewWithOpenAi } from "../runners/review-openai.mjs"
 import { writeJsonArtifact } from "../utils/artifacts.mjs"
 import { createCommandLogger } from "../utils/command-logger.mjs"
@@ -129,6 +130,7 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
   const load = runtime.loadConfig || loadConfig
   const runCodexReview = runtime.reviewWithCodex || reviewWithCodex
   const runCopilotReview = runtime.reviewWithCopilot || reviewWithCopilot
+  const runClaudeReview = runtime.reviewWithClaude || reviewWithClaude
   const runOpenAiReview = runtime.reviewWithOpenAi || reviewWithOpenAi
   const loggerFactory = runtime.createCommandLogger || createCommandLogger
   const loadPreset = runtime.loadStylePreset || loadStylePreset
@@ -154,8 +156,8 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
   const style = overrides.style || config.style
   let prompt
 
-  if (!["codex", "copilot", "openai"].includes(runner)) {
-    throw new Error(`Invalid review runner: "${runner}". Allowed: codex, copilot, openai.`)
+  if (!["codex", "copilot", "openai", "claude"].includes(runner)) {
+    throw new Error(`Invalid review runner: "${runner}". Allowed: codex, copilot, openai, claude.`)
   }
 
   if (runner === "openai" && !model) {
@@ -167,6 +169,9 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
   }
   if (runner === "copilot") {
     assertCopilotReady(config.review.copilot.bin)
+  }
+  if (runner === "claude") {
+    assertClaudeReady(config.review.claude.bin)
   }
 
   if (overrides.promptFile) {
@@ -213,7 +218,9 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
     ? `Runner: codex CLI (${config.review.codex.bin})`
     : runner === "copilot"
       ? `Runner: copilot CLI (${config.review.copilot.bin})`
-      : "Runner: OpenAI API"
+      : runner === "claude"
+        ? `Runner: claude CLI (${config.review.claude.bin})`
+        : "Runner: OpenAI API"
   report.push(runnerDescription)
   report.push(`Model: ${model || "default"}`)
   report.push(`Reasoning effort: ${reasoningEffort || "default"}`)
@@ -259,7 +266,19 @@ export async function runReview(args = [], cwd = process.cwd(), runtime = {}) {
                 rootDir: config.paths.root,
                 logger,
               })
-            : await runOpenAiReview({
+            : runner === "claude"
+              ? await runClaudeReview({
+                  claudeBin: config.review.claude.bin,
+                  model,
+                  reasoningEffort,
+                  timeoutMs: config.review.timeoutMs,
+                  prompt,
+                  label: group.label,
+                  filePaths,
+                  rootDir: config.paths.root,
+                  logger,
+                })
+              : await runOpenAiReview({
                 apiKey: process.env[config.review.openai.apiKeyEnv],
                 apiKeyEnv: config.review.openai.apiKeyEnv,
                 imageDetail,

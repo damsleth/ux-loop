@@ -96,6 +96,58 @@ test("runReview overwrites stale report.md left over from a prior run", async ()
   fs.rmSync(root, { recursive: true, force: true })
 })
 
+test("runReview --runner claude routes to the claude runner after a passing readiness check", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-review-claude-"))
+  const config = buildConfig(root)
+  // Hermetic readiness: assertClaudeReady runs `<bin> --version` against the
+  // imported (non-injected) helper, so point bin at a stub that exits 0.
+  const stubBin = path.join(root, "fake-claude.sh")
+  fs.writeFileSync(stubBin, "#!/bin/sh\necho '2.0.0 (Claude Code)'\n")
+  fs.chmodSync(stubBin, 0o755)
+  config.review.claude = { bin: stubBin }
+
+  let claudeCalled = false
+
+  await runReview(["--runner", "claude"], root, {
+    loadConfig: async () => config,
+    reviewWithClaude: async () => { claudeCalled = true; return "- claude issue" },
+    reviewWithOpenAi: async () => { throw new Error("openai runner must not be used") },
+    createCommandLogger: silentLoggerFactory,
+    loadStylePreset: noopStylePreset,
+    writeJsonArtifact: () => path.join(root, ".uxl", "reports", "fake.json"),
+  })
+
+  assert.equal(claudeCalled, true, "claude review runner must be invoked")
+
+  const body = fs.readFileSync(config.paths.reportPath, "utf8")
+  assert.ok(body.includes("claude issue"))
+  assert.ok(body.includes("Runner: claude CLI"))
+
+  fs.rmSync(root, { recursive: true, force: true })
+})
+
+test("runReview rejects an invalid runner with claude now listed as allowed", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-review-badrunner-"))
+  const config = buildConfig(root)
+
+  await assert.rejects(
+    () =>
+      runReview(["--runner", "banana"], root, {
+        loadConfig: async () => config,
+        createCommandLogger: silentLoggerFactory,
+        loadStylePreset: noopStylePreset,
+        writeJsonArtifact: () => path.join(root, ".uxl", "reports", "fake.json"),
+      }),
+    (err) => {
+      assert.ok(/banana/.test(err.message))
+      assert.ok(/claude/.test(err.message), `expected claude in allowed list: ${err.message}`)
+      return true
+    }
+  )
+
+  fs.rmSync(root, { recursive: true, force: true })
+})
+
 test("runReview does not write an extra canonical pointer for custom reportPath filenames", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "uxl-review-custom-"))
   const config = buildConfig(root)
